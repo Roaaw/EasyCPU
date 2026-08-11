@@ -39,6 +39,22 @@ const Assembler = (() => {
         return NaN;
     }
 
+    // Parse a DB/DW initializer: number, '?', or a quoted character
+    function parseDataValue(s) {
+        if (s == null) return NaN;
+        s = s.trim();
+        if (s === '?') return 0;
+        let n = parseNumber(s);
+        if (!isNaN(n)) return n;
+        // character literal: 'A' or "A"
+        let ch = s.match(/^(['"])(.*?)\1$/);
+        if (ch) {
+            if (ch[2].length === 0) return 0;
+            return ch[2].charCodeAt(0) & 0xFF;
+        }
+        return NaN;
+    }
+
     function parseOperand(token, labels, equates, dataSegAddr) {
         if (token == null || token === '') return null;
         let t = token.trim();
@@ -90,10 +106,12 @@ const Assembler = (() => {
             }
             let num = parseNumber(inner);
             if (isNaN(num) && equates[inner] !== undefined) num = equates[inner];
+            if (isNaN(num) && labels[inner] !== undefined) num = labels[inner];
             if (!isNaN(num)) {
                 return { type: 'memory_direct', address: num & 0xFFFF, size: 8, segment: segOverride };
             }
-            return { type: 'memory_direct', address: 0, size: 8, segment: segOverride };
+            // Unresolved symbol in [brackets] — keep as unknown so pass 2 can report an error
+            return { type: 'unknown', raw: inner };
         }
 
         let num = parseNumber(t);
@@ -191,32 +209,53 @@ const Assembler = (() => {
                 continue;
             }
 
-            // DB directive in data section
+            // Data directives (DB / DW) in .data section
             if (inDataSection) {
-                let dbMatch = line.match(/^(\w+)\s+db\s+(.+)$/i);
-                if (dbMatch) {
-                    let name = dbMatch[1].toLowerCase();
-                    let valStr = dbMatch[2].trim();
-                    let val = parseNumber(valStr);
-                    if (!isNaN(val)) {
-                        labels[name] = dataOffset;
-                        dataBytes[dataOffset] = val & 0xFF;
-                        dataOffset++;
-                    }
-                    parsedLines.push({ lineNum, original: originalLine, type: 'data', name });
-                    continue;
-                }
-                let dbOnly = line.match(/^db\s+(.+)$/i);
-                if (dbOnly) {
-                    let vals = dbOnly[1].split(',');
+                let namedData = line.match(/^(\w+)\s+(db|dw)\s+(.+)$/i);
+                if (namedData) {
+                    let name = namedData[1].toLowerCase();
+                    let width = namedData[2].toLowerCase();
+                    let vals = splitOperands(namedData[3]);
+                    labels[name] = dataOffset;
                     for (let v of vals) {
-                        let n = parseNumber(v.trim());
-                        if (!isNaN(n)) {
+                        let n = parseDataValue(v);
+                        if (isNaN(n)) {
+                            errors.push({ line: lineNum, message: `Invalid ${width.toUpperCase()} value: "${v}"` });
+                            continue;
+                        }
+                        if (width === 'db') {
                             dataBytes[dataOffset] = n & 0xFF;
                             dataOffset++;
+                        } else {
+                            // little-endian word
+                            dataBytes[dataOffset] = n & 0xFF;
+                            dataBytes[dataOffset + 1] = (n >> 8) & 0xFF;
+                            dataOffset += 2;
                         }
                     }
-                    parsedLines.push({ lineNum, original: originalLine, type: 'data' });
+                    parsedLines.push({ lineNum, original: originalLine, type: 'data', name, width });
+                    continue;
+                }
+                let anonData = line.match(/^(db|dw)\s+(.+)$/i);
+                if (anonData) {
+                    let width = anonData[1].toLowerCase();
+                    let vals = splitOperands(anonData[2]);
+                    for (let v of vals) {
+                        let n = parseDataValue(v);
+                        if (isNaN(n)) {
+                            errors.push({ line: lineNum, message: `Invalid ${width.toUpperCase()} value: "${v}"` });
+                            continue;
+                        }
+                        if (width === 'db') {
+                            dataBytes[dataOffset] = n & 0xFF;
+                            dataOffset++;
+                        } else {
+                            dataBytes[dataOffset] = n & 0xFF;
+                            dataBytes[dataOffset + 1] = (n >> 8) & 0xFF;
+                            dataOffset += 2;
+                        }
+                    }
+                    parsedLines.push({ lineNum, original: originalLine, type: 'data', width });
                     continue;
                 }
             }
@@ -297,6 +336,18 @@ const Assembler = (() => {
                     } else {
                         errors.push({ line: pl.lineNum, message: `Unknown symbol: "${op.raw}"` });
                     }
+                }
+            }
+
+            // Infer memory operand size from a paired register (e.g. mov [var], ax → 16-bit)
+            const memTypes = new Set([
+                'memory_direct', 'memory_reg', 'memory_reg_disp', 'memory_reg2', 'memory_reg2_disp'
+            ]);
+            if (operands.length === 2) {
+                let a = operands[0], b = operands[1];
+                if (a && b) {
+                    if (memTypes.has(a.type) && b.type === 'register') a.size = b.size;
+                    else if (memTypes.has(b.type) && a.type === 'register') b.size = a.size;
                 }
             }
 
