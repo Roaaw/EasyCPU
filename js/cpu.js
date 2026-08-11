@@ -153,12 +153,22 @@ const CPU = (() => {
 
     function readMem(op) {
         let addr = effectiveAddress(op);
+        if (op.size === 16) {
+            let lo = memory[addr] || 0;
+            let hi = memory[(addr + 1) & 0xFFFF] || 0;
+            return (lo | (hi << 8)) & 0xFFFF;
+        }
         return memory[addr] || 0;
     }
 
     function writeMem(op, val) {
         let addr = effectiveAddress(op);
-        memory[addr] = val & 0xFF;
+        if (op.size === 16) {
+            memory[addr] = val & 0xFF;
+            memory[(addr + 1) & 0xFFFF] = (val >> 8) & 0xFF;
+        } else {
+            memory[addr] = val & 0xFF;
+        }
     }
 
     function getValue(op) {
