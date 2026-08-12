@@ -55,10 +55,22 @@ const Assembler = (() => {
         return NaN;
     }
 
-    function parseOperand(token, labels, equates, dataSegAddr) {
+    function parseOperand(token, labels, equates, dataSegAddr, dataSizes) {
         if (token == null || token === '') return null;
         let t = token.trim();
         let tl = t.toLowerCase();
+
+        // Explicit size override: BYTE PTR / WORD PTR
+        let ptrMatch = t.match(/^(byte|word)\s+ptr\s+(.+)$/i);
+        if (ptrMatch) {
+            let forcedSize = ptrMatch[1].toLowerCase() === 'word' ? 16 : 8;
+            let innerOp = parseOperand(ptrMatch[2], labels, equates, dataSegAddr, dataSizes);
+            if (innerOp && innerOp.type !== 'unknown') {
+                innerOp.size = forcedSize;
+                return innerOp;
+            }
+            return { type: 'unknown', raw: t };
+        }
 
         if (tl === '@data') {
             return { type: 'immediate', value: dataSegAddr, size: 16 };
@@ -108,7 +120,10 @@ const Assembler = (() => {
             if (isNaN(num) && equates[inner] !== undefined) num = equates[inner];
             if (isNaN(num) && labels[inner] !== undefined) num = labels[inner];
             if (!isNaN(num)) {
-                return { type: 'memory_direct', address: num & 0xFFFF, size: 8, segment: segOverride };
+                // Prefer declared DB/DW size when the bracketed name is a data label
+                let sizeFromData = !!(dataSizes && dataSizes[inner]);
+                let size = sizeFromData ? dataSizes[inner] : 8;
+                return { type: 'memory_direct', address: num & 0xFFFF, size, sizeFromData, segment: segOverride };
             }
             // Unresolved symbol in [brackets] — keep as unknown so pass 2 can report an error
             return { type: 'unknown', raw: inner };
@@ -156,6 +171,7 @@ const Assembler = (() => {
         const errors = [];
         const labels = {};
         const equates = {};
+        const dataSizes = {}; // label → 8 (DB) or 16 (DW)
         const dataBytes = [];
         let dataSegAddr = 0x1000;
         let inDataSection = false;
@@ -217,6 +233,7 @@ const Assembler = (() => {
                     let width = namedData[2].toLowerCase();
                     let vals = splitOperands(namedData[3]);
                     labels[name] = dataOffset;
+                    dataSizes[name] = (width === 'dw') ? 16 : 8;
                     for (let v of vals) {
                         let n = parseDataValue(v);
                         if (isNaN(n)) {
@@ -320,7 +337,7 @@ const Assembler = (() => {
             if (pl.type !== 'instruction') continue;
 
             let ops = splitOperands(pl.operandStr);
-            let operands = ops.map(o => parseOperand(o, labels, equates, dataSegAddr));
+            let operands = ops.map(o => parseOperand(o, labels, equates, dataSegAddr, dataSizes));
 
             for (let op of operands) {
                 if (op && op.type === 'unknown') {
@@ -339,7 +356,10 @@ const Assembler = (() => {
                 }
             }
 
-            // Infer memory operand size from a paired register (e.g. mov [var], ax → 16-bit)
+            // Infer memory operand size from a paired register or 16-bit immediate
+            // (e.g. mov [var], ax → 16-bit; mov [bx], 1234h → 16-bit).
+            // Declared DB/DW sizes come from parseOperand; registers override them.
+            // A 16-bit immediate widens only untyped memory (not a DB label).
             const memTypes = new Set([
                 'memory_direct', 'memory_reg', 'memory_reg_disp', 'memory_reg2', 'memory_reg2_disp'
             ]);
@@ -348,6 +368,8 @@ const Assembler = (() => {
                 if (a && b) {
                     if (memTypes.has(a.type) && b.type === 'register') a.size = b.size;
                     else if (memTypes.has(b.type) && a.type === 'register') b.size = a.size;
+                    else if (memTypes.has(a.type) && b.type === 'immediate' && b.size === 16 && !a.sizeFromData) a.size = 16;
+                    else if (memTypes.has(b.type) && a.type === 'immediate' && a.size === 16 && !b.sizeFromData) b.size = 16;
                 }
             }
 
@@ -374,6 +396,7 @@ const Assembler = (() => {
             instructions,
             labels,
             equates,
+            dataSizes,
             dataBytes,
             dataSegAddr,
             lineMap,
