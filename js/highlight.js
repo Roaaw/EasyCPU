@@ -68,7 +68,23 @@ const Highlight = (() => {
     }
 
     function highlightLine(line) {
-        const commentIdx = line.indexOf(';');
+        let commentIdx = -1;
+        let inQuote = null;
+        for (let i = 0; i < line.length; i++) {
+            let ch = line[i];
+            if (inQuote) {
+                if (ch === inQuote) inQuote = null;
+                continue;
+            }
+            if (ch === '"' || ch === "'") {
+                inQuote = ch;
+                continue;
+            }
+            if (ch === ';') {
+                commentIdx = i;
+                break;
+            }
+        }
         let code = line;
         let comment = '';
         if (commentIdx !== -1) {
@@ -86,13 +102,15 @@ const Highlight = (() => {
     function tokenizeLine(line) {
         if (!line) return '';
         let result = '';
-        const regex = /(\s+)|([a-zA-Z_@][\w.]*:?)|(\[.*?\])|(0x[0-9a-fA-F]+|[0-9][0-9a-fA-F]*[hH]|[01]+[bB]|[0-9]+[dD]?)|([,\+\-])|(.)/g;
+        const regex = /(\s+)|(['"][^'"]*['"])|([a-zA-Z_@][\w.]*:?)|(\[.*?\])|(0x[0-9a-fA-F]+|[0-9][0-9a-fA-F]*[hH]|[01]+[bB]|[0-9]+[dD]?)|([,\+\-])|(.)/g;
         let m;
         while ((m = regex.exec(line)) !== null) {
             if (m[1]) {
                 result += escapeHtml(m[1]);
             } else if (m[2]) {
-                const word = m[2];
+                result += '<span class="hl-string">' + escapeHtml(m[2]) + '</span>';
+            } else if (m[3]) {
+                const word = m[3];
                 const lower = word.toLowerCase().replace(/:$/, '');
                 const hasColon = word.endsWith(':');
                 if (hasColon) {
@@ -101,19 +119,19 @@ const Highlight = (() => {
                     result += '<span class="hl-mnemonic">' + escapeHtml(word) + '</span>';
                 } else if (REGISTERS.has(lower)) {
                     result += '<span class="hl-register">' + escapeHtml(word) + '</span>';
-                } else if (DIRECTIVES.has(lower) || lower === '@data') {
+                } else if (DIRECTIVES.has(lower) || lower === '@data' || lower === 'offset' || lower === 'ptr' || lower === 'byte' || lower === 'word') {
                     result += '<span class="hl-directive">' + escapeHtml(word) + '</span>';
                 } else {
                     result += '<span class="hl-symbol">' + escapeHtml(word) + '</span>';
                 }
-            } else if (m[3]) {
-                result += '<span class="hl-memory">' + escapeHtml(m[3]) + '</span>';
             } else if (m[4]) {
-                result += '<span class="hl-number">' + escapeHtml(m[4]) + '</span>';
+                result += '<span class="hl-memory">' + escapeHtml(m[4]) + '</span>';
             } else if (m[5]) {
-                result += escapeHtml(m[5]);
+                result += '<span class="hl-number">' + escapeHtml(m[5]) + '</span>';
             } else if (m[6]) {
                 result += escapeHtml(m[6]);
+            } else if (m[7]) {
+                result += escapeHtml(m[7]);
             }
         }
         return result;

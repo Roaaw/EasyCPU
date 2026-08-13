@@ -456,6 +456,25 @@ const UI = (() => {
         let rows = 12;
         let html = '';
 
+        let labelAtOffset = {};
+        if (assembled && assembled.dataSizes) {
+            let entries = Object.keys(assembled.dataSizes).map(name => ({
+                name,
+                offset: assembled.labels[name]
+            })).filter(e => e.offset !== undefined).sort((a, b) => a.offset - b.offset);
+            let dataLen = assembled.dataBytes ? assembled.dataBytes.length : 0;
+            for (let i = 0; i < entries.length; i++) {
+                let start = entries[i].offset;
+                let end = (i + 1 < entries.length) ? entries[i + 1].offset : dataLen;
+                if (end <= start) {
+                    end = start + (assembled.dataSizes[entries[i].name] === 16 ? 2 : 1);
+                }
+                for (let off = start; off < end; off++) {
+                    labelAtOffset[off] = entries[i].name;
+                }
+            }
+        }
+
         for (let row = 0; row < rows; row++) {
             let addr = (segBase + startAddr + row * 16) & 0xFFFF;
             let addrStr = '<span class="mem-addr">' +
@@ -467,7 +486,13 @@ const UI = (() => {
                 let byteAddr = (addr + col) & 0xFFFF;
                 let b = mem[byteAddr] || 0;
                 let cls = b !== 0 ? 'mem-val-nonzero' : 'mem-val';
-                hexPart += '<span class="' + cls + '">' +
+                let dataOff = startAddr + row * 16 + col;
+                let title = '';
+                if (segment === 'ds' && labelAtOffset[dataOff]) {
+                    title = ' title="' + labelAtOffset[dataOff] + '"';
+                    cls += ' mem-val-label';
+                }
+                hexPart += '<span class="' + cls + '"' + title + '>' +
                     b.toString(16).toUpperCase().padStart(2, '0') + '</span> ';
                 if (col === 7) hexPart += ' ';
                 ascPart += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
@@ -477,6 +502,55 @@ const UI = (() => {
         }
 
         $('#memory-dump').innerHTML = html;
+        updateDataSymbols(mem, segment === 'ds' ? segBase : null);
+    }
+
+    function updateDataSymbols(mem, dsBase) {
+        const el = $('#data-symbols');
+        if (!el) return;
+        if (dsBase == null || !assembled || !assembled.dataSizes) {
+            el.innerHTML = '';
+            return;
+        }
+        let names = Object.keys(assembled.dataSizes);
+        if (names.length === 0) {
+            el.innerHTML = '';
+            return;
+        }
+        let entries = names.map(name => ({
+            name,
+            offset: assembled.labels[name],
+            size: assembled.dataSizes[name]
+        })).sort((a, b) => a.offset - b.offset);
+        let dataLen = assembled.dataBytes ? assembled.dataBytes.length : 0;
+        let html = '';
+        for (let i = 0; i < entries.length; i++) {
+            let e = entries[i];
+            let nextOff = (i + 1 < entries.length) ? entries[i + 1].offset : dataLen;
+            let len = Math.max(nextOff - e.offset, e.size === 16 ? 2 : 1);
+            let value;
+            if (e.size === 16) {
+                let phys = (dsBase + e.offset) & 0xFFFF;
+                let val = (mem[phys] | (mem[(phys + 1) & 0xFFFF] << 8)) & 0xFFFF;
+                value = val.toString(16).toUpperCase().padStart(4, '0') + 'h';
+            } else {
+                let bytes = [];
+                let printable = len > 1;
+                for (let j = 0; j < len; j++) {
+                    let b = mem[(dsBase + e.offset + j) & 0xFFFF] || 0;
+                    bytes.push(b);
+                    if (b < 32 || b > 126) printable = false;
+                }
+                if (printable) {
+                    value = '"' + bytes.map(b => String.fromCharCode(b)).join('') + '"';
+                } else {
+                    value = bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ') + 'h';
+                }
+            }
+            html += '<span class="data-sym"><span class="data-sym-name">' + e.name +
+                '</span>=' + String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') + '</span>';
+        }
+        el.innerHTML = html;
     }
 
     function updateStack() {

@@ -336,8 +336,11 @@ Write <code>0FFh</code>, not <code>FFh</code> &mdash; otherwise the assembler th
 <pre><span class="kw">.data</span>
 <span class="lbl">count</span> <span class="kw">db</span> <span class="num">10</span>         <span class="cmt">; define a byte variable "count" = 10</span>
 <span class="lbl">total</span> <span class="kw">dw</span> <span class="num">0</span>          <span class="cmt">; define a word (16-bit) variable "total" = 0</span>
+<span class="lbl">msg</span>   <span class="kw">db</span> <span class="str">"HELLO"</span>    <span class="cmt">; 5 bytes: H E L L O</span>
 <span class="kw">.code</span>
-<span class="kw">mov</span> <span class="reg">al</span>, <span class="lbl">count</span>      <span class="cmt">; load the value of "count" into AL</span></pre>
+<span class="kw">mov</span> <span class="reg">al</span>, <span class="lbl">count</span>      <span class="cmt">; load the value of "count" into AL</span>
+<span class="kw">inc</span> <span class="lbl">total</span>          <span class="cmt">; add 1 to the whole 16-bit word</span>
+<span class="kw">mov</span> <span class="reg">bx</span>, <span class="kw">offset</span> <span class="lbl">msg</span>  <span class="cmt">; BX = address of the string</span></pre>
 
 <h4>The Stack</h4>
 <p>The stack is a <strong>Last-In, First-Out (LIFO)</strong> area of memory. Think of it like a stack of plates &mdash;
@@ -785,7 +788,10 @@ section are placed at consecutive offsets starting from 0:</p>
 <span class="lbl">first</span>  <span class="kw">db</span> <span class="num">10</span>      <span class="cmt">; offset 0 in DS</span>
 <span class="lbl">second</span> <span class="kw">db</span> <span class="num">20</span>      <span class="cmt">; offset 1 in DS</span>
 <span class="lbl">total</span>  <span class="kw">dw</span> <span class="num">0</span>       <span class="cmt">; offset 2 in DS (2 bytes)</span></pre>
-<p>Access them by name: <code>mov al, first</code> reads the byte at DS:0000.</p>
+<p>Access them by name: <code>mov al, first</code> reads the byte at DS:0000.
+<code>DW</code> names are 16-bit: <code>inc total</code> or <code>inc word ptr [total]</code> adds 1 to the whole word.
+<code>DB "HELLO"</code> stores one byte per character (visible in the DS memory dump ASCII column).
+Use <code>offset name</code> when you need the address instead of the value.</p>
 
 <h4>Stack Layout</h4>
 <p>The stack starts at <code>SS:0100h</code> and grows <strong>downward</strong>. When you <code>PUSH AX</code>,

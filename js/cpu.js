@@ -952,7 +952,9 @@ const CPU = (() => {
                             }
                         }
                     }
-                    regs.ip = nextIp;
+                    let stringOps = ['movsb', 'stosb', 'lodsb', 'cmpsb', 'scasb'];
+                    // Skip the string instruction; REP already executed it CX times
+                    regs.ip = stringOps.includes(nextInstr.mnemonic) ? nextIp + 1 : nextIp;
                     jumped = true;
                 }
                 break;

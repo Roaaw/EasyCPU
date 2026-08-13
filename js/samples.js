@@ -593,14 +593,14 @@ end`,
 "Advanced: String Copy (MOVSB)": `.model small
 .stack 100h
 .data
-db 48h,65h,6ch,6ch,6fh
+msg db "Hello"
 .code
 mov ax,@data
 mov ds,ax
 mov es,ax
 
 ; Copy 5 bytes from DS:SI to ES:DI
-mov si, 0           ; source offset
+mov si, offset msg  ; source offset
 mov di, 10          ; destination offset
 mov cx, 5           ; byte count
 cld                 ; direction = forward

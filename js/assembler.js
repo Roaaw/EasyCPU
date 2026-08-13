@@ -39,20 +39,58 @@ const Assembler = (() => {
         return NaN;
     }
 
-    // Parse a DB/DW initializer: number, '?', or a quoted character
-    function parseDataValue(s) {
-        if (s == null) return NaN;
-        s = s.trim();
-        if (s === '?') return 0;
-        let n = parseNumber(s);
-        if (!isNaN(n)) return n;
-        // character literal: 'A' or "A"
-        let ch = s.match(/^(['"])(.*?)\1$/);
-        if (ch) {
-            if (ch[2].length === 0) return 0;
-            return ch[2].charCodeAt(0) & 0xFF;
+    // Strip a ; comment, ignoring semicolons inside quoted strings
+    function stripComment(line) {
+        let inQuote = null;
+        for (let i = 0; i < line.length; i++) {
+            let ch = line[i];
+            if (inQuote) {
+                if (ch === inQuote) inQuote = null;
+                continue;
+            }
+            if (ch === '"' || ch === "'") {
+                inQuote = ch;
+                continue;
+            }
+            if (ch === ';') return line.substring(0, i);
         }
-        return NaN;
+        return line;
+    }
+
+    // Emit bytes for one DB/DW initializer: number, '?', or a quoted string.
+    // DB "MIGUEL" → one byte per character; DW packs two characters per word.
+    function emitDataBytes(s, width) {
+        if (s == null) return null;
+        s = s.trim();
+        if (s === '?') {
+            return width === 'dw' ? [0, 0] : [0];
+        }
+        let n = parseNumber(s);
+        if (!isNaN(n)) {
+            if (width === 'dw') return [n & 0xFF, (n >> 8) & 0xFF];
+            return [n & 0xFF];
+        }
+        let ch = s.match(/^(['"])([\s\S]*)\1$/);
+        if (ch) {
+            let text = ch[2];
+            if (text.length === 0) {
+                return width === 'dw' ? [0, 0] : [0];
+            }
+            let bytes = [];
+            if (width === 'db') {
+                for (let i = 0; i < text.length; i++) {
+                    bytes.push(text.charCodeAt(i) & 0xFF);
+                }
+            } else {
+                for (let i = 0; i < text.length; i += 2) {
+                    let lo = text.charCodeAt(i) & 0xFF;
+                    let hi = (i + 1 < text.length) ? (text.charCodeAt(i + 1) & 0xFF) : 0;
+                    bytes.push(lo, hi);
+                }
+            }
+            return bytes;
+        }
+        return null;
     }
 
     function parseOperand(token, labels, equates, dataSegAddr, dataSizes) {
@@ -65,9 +103,22 @@ const Assembler = (() => {
         if (ptrMatch) {
             let forcedSize = ptrMatch[1].toLowerCase() === 'word' ? 16 : 8;
             let innerOp = parseOperand(ptrMatch[2], labels, equates, dataSegAddr, dataSizes);
-            if (innerOp && innerOp.type !== 'unknown') {
+            if (innerOp) {
                 innerOp.size = forcedSize;
                 return innerOp;
+            }
+            return { type: 'unknown', raw: t };
+        }
+
+        // OFFSET label → address as a 16-bit immediate (MASM-style)
+        let offsetMatch = t.match(/^offset\s+(.+)$/i);
+        if (offsetMatch) {
+            let name = offsetMatch[1].trim().toLowerCase();
+            if (labels[name] !== undefined) {
+                return { type: 'immediate', value: labels[name] & 0xFFFF, size: 16 };
+            }
+            if (equates[name] !== undefined) {
+                return { type: 'immediate', value: equates[name] & 0xFFFF, size: 16 };
             }
             return { type: 'unknown', raw: t };
         }
@@ -141,6 +192,17 @@ const Assembler = (() => {
         }
 
         if (labels[tl] !== undefined) {
+            // Data labels are memory operands (mov ax, delta / inc delta).
+            // Code labels stay jump/call targets.
+            if (dataSizes && dataSizes[tl]) {
+                return {
+                    type: 'memory_direct',
+                    address: labels[tl] & 0xFFFF,
+                    size: dataSizes[tl],
+                    sizeFromData: true,
+                    segment: segOverride
+                };
+            }
             return { type: 'label', name: tl, address: labels[tl] };
         }
 
@@ -152,7 +214,18 @@ const Assembler = (() => {
         let result = [];
         let depth = 0;
         let current = '';
+        let inQuote = null;
         for (let ch of operandStr) {
+            if (inQuote) {
+                current += ch;
+                if (ch === inQuote) inQuote = null;
+                continue;
+            }
+            if (ch === '"' || ch === "'") {
+                inQuote = ch;
+                current += ch;
+                continue;
+            }
             if (ch === '[') depth++;
             if (ch === ']') depth--;
             if (ch === ',' && depth === 0) {
@@ -187,9 +260,7 @@ const Assembler = (() => {
             let originalLine = line;
             let lineNum = i + 1;
 
-            let commentIdx = line.indexOf(';');
-            if (commentIdx !== -1) line = line.substring(0, commentIdx);
-            line = line.trim();
+            line = stripComment(line).trim();
             if (!line) {
                 parsedLines.push({ lineNum, original: originalLine, type: 'empty' });
                 continue;
@@ -235,19 +306,14 @@ const Assembler = (() => {
                     labels[name] = dataOffset;
                     dataSizes[name] = (width === 'dw') ? 16 : 8;
                     for (let v of vals) {
-                        let n = parseDataValue(v);
-                        if (isNaN(n)) {
+                        let bytes = emitDataBytes(v, width);
+                        if (!bytes) {
                             errors.push({ line: lineNum, message: `Invalid ${width.toUpperCase()} value: "${v}"` });
                             continue;
                         }
-                        if (width === 'db') {
-                            dataBytes[dataOffset] = n & 0xFF;
+                        for (let b of bytes) {
+                            dataBytes[dataOffset] = b;
                             dataOffset++;
-                        } else {
-                            // little-endian word
-                            dataBytes[dataOffset] = n & 0xFF;
-                            dataBytes[dataOffset + 1] = (n >> 8) & 0xFF;
-                            dataOffset += 2;
                         }
                     }
                     parsedLines.push({ lineNum, original: originalLine, type: 'data', name, width });
@@ -258,18 +324,14 @@ const Assembler = (() => {
                     let width = anonData[1].toLowerCase();
                     let vals = splitOperands(anonData[2]);
                     for (let v of vals) {
-                        let n = parseDataValue(v);
-                        if (isNaN(n)) {
+                        let bytes = emitDataBytes(v, width);
+                        if (!bytes) {
                             errors.push({ line: lineNum, message: `Invalid ${width.toUpperCase()} value: "${v}"` });
                             continue;
                         }
-                        if (width === 'db') {
-                            dataBytes[dataOffset] = n & 0xFF;
+                        for (let b of bytes) {
+                            dataBytes[dataOffset] = b;
                             dataOffset++;
-                        } else {
-                            dataBytes[dataOffset] = n & 0xFF;
-                            dataBytes[dataOffset + 1] = (n >> 8) & 0xFF;
-                            dataOffset += 2;
                         }
                     }
                     parsedLines.push({ lineNum, original: originalLine, type: 'data', width });
@@ -319,6 +381,27 @@ const Assembler = (() => {
                 }
             }
 
+            // Allow "rep movsb" (prefix + string op) on one line
+            const REP_PREFIXES = ['rep', 'repe', 'repne', 'repz', 'repnz'];
+            if (REP_PREFIXES.includes(mnemonic) && operandStr) {
+                let restMnem = operandStr.toLowerCase().split(/\s+/)[0];
+                if (MNEMONICS.includes(restMnem) && !REP_PREFIXES.includes(restMnem)) {
+                    parsedLines.push({
+                        lineNum, original: originalLine, type: 'instruction',
+                        label, mnemonic, operandStr: '', index: instrIndex
+                    });
+                    instrIndex++;
+                    parsedLines.push({
+                        lineNum, original: originalLine, type: 'instruction',
+                        label: null, mnemonic: restMnem,
+                        operandStr: operandStr.slice(restMnem.length).trim(),
+                        index: instrIndex
+                    });
+                    instrIndex++;
+                    continue;
+                }
+            }
+
             parsedLines.push({
                 lineNum,
                 original: originalLine,
@@ -342,7 +425,12 @@ const Assembler = (() => {
             for (let op of operands) {
                 if (op && op.type === 'unknown') {
                     let name = op.raw.toLowerCase();
-                    if (labels[name] !== undefined) {
+                    if (dataSizes[name]) {
+                        op.type = 'memory_direct';
+                        op.address = labels[name] & 0xFFFF;
+                        op.size = op.size || dataSizes[name];
+                        op.sizeFromData = true;
+                    } else if (labels[name] !== undefined) {
                         op.type = 'label';
                         op.name = name;
                         op.address = labels[name];

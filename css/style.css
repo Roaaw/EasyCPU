@@ -602,6 +602,27 @@ select:focus, button:focus, input:focus, textarea:focus {
     color: var(--text-muted);
 }
 
+.mem-val-label {
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+}
+
+#data-symbols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    padding: 4px 2px 2px;
+    font-family: 'Cascadia Code', 'Consolas', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    min-height: 0;
+}
+
+.data-sym-name {
+    color: var(--accent-cyan);
+}
+
 /* ---- CONSOLE ---- */
 #console-body {
     max-height: 120px;
@@ -890,6 +911,10 @@ select:focus, button:focus, input:focus, textarea:focus {
 
 .help-body pre .lbl {
     color: var(--accent-yellow);
+}
+
+.help-body pre .str {
+    color: var(--accent-green);
 }
 
 .help-body .help-table {
@@ -1249,6 +1274,7 @@ body:not(.advanced-mode) .adv { display: none !important; }
 .hl-comment { color: var(--accent-green); font-style: italic; }
 .hl-symbol { color: var(--text-secondary); }
 .hl-memory { color: var(--accent-orange); }
+.hl-string { color: var(--accent-green); }
 
 /* ---- AUTOCOMPLETE ---- */
 .ac-dropdown {
