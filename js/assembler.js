@@ -483,17 +483,16 @@ const Assembler = (() => {
             if (operands.length === 2) {
                 let a = operands[0], b = operands[1];
                 if (a && b) {
-                    if (memTypes.has(a.type) && b.type === 'register') a.size = b.size;
+                    if (memTypes.has(a.type) && memTypes.has(b.type)) {
+                        errors.push({
+                            line: pl.lineNum,
+                            message: `Memory-to-memory not allowed (${pl.mnemonic} ${pl.operandStr}). ` +
+                                'Use a register as an intermediate (e.g. mov al, [di] / mov [si], al) or MOVSB.'
+                        });
+                    } else if (memTypes.has(a.type) && b.type === 'register') a.size = b.size;
                     else if (memTypes.has(b.type) && a.type === 'register') b.size = a.size;
                     else if (memTypes.has(a.type) && b.type === 'immediate' && b.size === 16 && !a.sizeFromData) a.size = 16;
                     else if (memTypes.has(b.type) && a.type === 'immediate' && a.size === 16 && !b.sizeFromData) b.size = 16;
-                    else if (memTypes.has(a.type) && memTypes.has(b.type)) {
-                        // Memory-to-memory (EasyCPU extension): use WORD if either side is 16-bit
-                        if (a.size === 16 || b.size === 16) {
-                            a.size = 16;
-                            b.size = 16;
-                        }
-                    }
                 }
             }
 

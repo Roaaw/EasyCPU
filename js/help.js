@@ -210,7 +210,6 @@ it only changes the flags. Use it right before a conditional jump.</div>
 <tr><th>Instruction</th><th>Example</th><th>What it Does</th></tr>
 <tr><td><code>MOV</code></td><td><code>mov al, 5</code></td><td>Copy a value: <code>destination = source</code></td></tr>
 <tr><td><code>MOV</code></td><td><code>mov al, 'A'</code> or <code>mov al, "A"</code></td><td>Character immediate (ASCII code of the quoted character)</td></tr>
-<tr><td><code>MOV</code></td><td><code>mov [si], [di]</code></td><td>Copy memory to memory (byte; use <code>word ptr</code> for 16-bit)</td></tr>
 <tr><td><code>XCHG</code></td><td><code>xchg al, bl</code></td><td>Swap two values</td></tr>
 <tr><td><code>LEA</code></td><td><code>lea bx, [si+4]</code></td><td>Load the address (not the value) into a register</td></tr>
 <tr><td><code>PUSH</code></td><td><code>push ax</code></td><td>Put a value on the stack (SP decreases by 2)</td></tr>
@@ -396,20 +395,27 @@ as instructions, causing unpredictable behavior.</p>
 <strong>Right:</strong> <code>mov al, bl</code> (both 8-bit) or <code>mov ax, bx</code> (both 16-bit).
 </div>
 
-<h4>4. Hex numbers starting with a letter</h4>
+<h4>4. Memory-to-memory MOV</h4>
+<div class="warn-box">
+<strong>Wrong:</strong> <code>mov [si], [di]</code> or <code>mov xx, yy</code> &mdash; the 8086 cannot copy memory to memory with MOV.<br>
+<strong>Right:</strong> go through a register: <code>mov al, [di]</code> then <code>mov [si], al</code>.
+To copy a string, use <code>MOVSB</code> (with <code>SI</code>, <code>DI</code>, and <code>CX</code>).
+</div>
+
+<h4>5. Hex numbers starting with a letter</h4>
 <div class="warn-box">
 <strong>Wrong:</strong> <code>mov al, FFh</code> &mdash; assembler sees "FFh" as a label name.<br>
 <strong>Right:</strong> <code>mov al, 0FFh</code> &mdash; the leading <code>0</code> tells the assembler it's a number.
 </div>
 
-<h4>5. Infinite loops without an exit</h4>
+<h4>6. Infinite loops without an exit</h4>
 <div class="warn-box">
 <p>If your loop never changes the flag that the jump checks, it loops forever. For example:</p>
 <pre><span class="lbl">loop:</span> <span class="kw">jmp</span> <span class="lbl">loop</span>   <span class="cmt">; this runs forever! (the simulator stops after 100,000 steps)</span></pre>
 <p>Always make sure the loop condition will eventually become false (e.g., decrement a counter).</p>
 </div>
 
-<h4>6. Forgetting that CMP doesn't store the result</h4>
+<h4>7. Forgetting that CMP doesn't store the result</h4>
 <div class="warn-box">
 <p><code>CMP AL, 5</code> does NOT change AL. It only sets flags. If you need the subtracted value,
 use <code>SUB AL, 5</code> instead.</p>
