@@ -209,6 +209,8 @@ it only changes the flags. Use it right before a conditional jump.</div>
 <table class="help-table">
 <tr><th>Instruction</th><th>Example</th><th>What it Does</th></tr>
 <tr><td><code>MOV</code></td><td><code>mov al, 5</code></td><td>Copy a value: <code>destination = source</code></td></tr>
+<tr><td><code>MOV</code></td><td><code>mov al, 'A'</code> or <code>mov al, "A"</code></td><td>Character immediate (ASCII code of the quoted character)</td></tr>
+<tr><td><code>MOV</code></td><td><code>mov [si], [di]</code></td><td>Copy memory to memory (byte; use <code>word ptr</code> for 16-bit)</td></tr>
 <tr><td><code>XCHG</code></td><td><code>xchg al, bl</code></td><td>Swap two values</td></tr>
 <tr><td><code>LEA</code></td><td><code>lea bx, [si+4]</code></td><td>Load the address (not the value) into a register</td></tr>
 <tr><td><code>PUSH</code></td><td><code>push ax</code></td><td>Put a value on the stack (SP decreases by 2)</td></tr>
@@ -659,6 +661,9 @@ and the <strong>direction flag</strong> controls whether pointers move forward o
 <tr><td><code>REPE</code> / <code>REPZ</code></td><td>CX &ne; 0 AND ZF = 1</td><td>CMPSB, SCASB</td></tr>
 <tr><td><code>REPNE</code> / <code>REPNZ</code></td><td>CX &ne; 0 AND ZF = 0</td><td>CMPSB, SCASB</td></tr>
 </table>
+<p>When <code>REPE CMPSB</code> stops because two bytes differ, <code>CX</code> keeps the remaining count
+(it is not forced to 0). <code>ZF = 0</code>, and <code>SI</code>/<code>DI</code> point one byte past the mismatch.
+If every compared byte was equal, <code>CX = 0</code> and <code>ZF = 1</code>.</p>
 
 <h4>Example: Copy 5 Bytes</h4>
 <pre><span class="kw">mov</span> <span class="reg">ax</span>, <span class="lbl">@data</span>

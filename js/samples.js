@@ -613,6 +613,32 @@ mov ah,4ch
 int 21h
 end`,
 
+"Advanced: String Compare (REPE CMPSB)": `.model small
+.stack 100h
+.data
+nome1 db "S403",0
+nome2 db "S303",0
+.code
+mov ax, @data
+mov ds, ax
+mov es, ax
+
+; Compare 4 bytes at DS:SI with ES:DI while they are equal
+mov si, offset nome1
+mov di, offset nome2
+mov cx, 4
+cld
+repe cmpsb          ; stops on first mismatch; CX = remaining count
+
+; "S403" vs "S303": first byte matches, second differs
+; CX should be 2 (not 0), ZF = 0
+mov al, cl
+out 2, al           ; show remaining CX on LEDs
+
+mov ah,4ch
+int 21h
+end`,
+
 "Advanced: Pixel Drawing": `.model small
 .stack 100h
 .data

@@ -10,6 +10,7 @@ const Highlight = (() => {
         'stc','clc','cmc','std','cld','cli','sti','hlt',
         'loop','loope','loopne','loopz','loopnz',
         'movsb','cmpsb','lodsb','stosb','scasb',
+        'movs','cmps','lods','stos','scas',
         'rep','repe','repne','repz','repnz','xlatb',
         'jnle','jnl','jnge','jng','jnbe','jna'
     ]);

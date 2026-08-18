@@ -16,9 +16,14 @@ const Assembler = (() => {
         'stc','clc','cmc','std','cld','cli','sti','hlt',
         'loop','loope','loopne','loopz','loopnz',
         'movsb','cmpsb','lodsb','stosb','scasb',
+        'movs','cmps','lods','stos','scas',
         'rep','repe','repne','repz','repnz',
         'xlatb','lahf','sahf'
     ];
+
+    const MNEMONIC_ALIASES = {
+        movs: 'movsb', cmps: 'cmpsb', lods: 'lodsb', stos: 'stosb', scas: 'scasb'
+    };
 
     const DIRECTIVES = ['.model','.stack','.data','.code','equ','db','dw','dd','end','org'];
 
@@ -37,6 +42,21 @@ const Assembler = (() => {
         if (/^[01]+b$/i.test(s)) return parseInt(s.slice(0, -1), 2);
         if (/^[0-9]+d?$/i.test(s)) return parseInt(s.replace(/d$/i, ''), 10);
         return NaN;
+    }
+
+    // 'A' / "A" → 8-bit immediate; 'AB' / "AB" → 16-bit little-endian (first char = low byte)
+    function parseCharLiteral(s) {
+        if (s == null) return null;
+        s = s.trim();
+        let m = s.match(/^(['"])([\s\S]*)\1$/);
+        if (!m) return null;
+        let text = m[2].replace(/''/g, "'").replace(/""/g, '"');
+        if (text.length <= 1) {
+            return { type: 'immediate', value: text.length ? (text.charCodeAt(0) & 0xFF) : 0, size: 8 };
+        }
+        let lo = text.charCodeAt(0) & 0xFF;
+        let hi = text.charCodeAt(1) & 0xFF;
+        return { type: 'immediate', value: (lo | (hi << 8)) & 0xFFFF, size: 16 };
     }
 
     // Strip a ; comment, ignoring semicolons inside quoted strings
@@ -186,6 +206,9 @@ const Assembler = (() => {
             return { type: 'immediate', value: num, size };
         }
 
+        let charLit = parseCharLiteral(t);
+        if (charLit) return charLit;
+
         if (equates[tl] !== undefined) {
             let val = equates[tl];
             return { type: 'immediate', value: val, size: val > 255 ? 16 : 8 };
@@ -289,8 +312,12 @@ const Assembler = (() => {
             let equMatch = line.match(/^(\w+)\s+equ\s+(.+)$/i);
             if (equMatch) {
                 let name = equMatch[1].toLowerCase();
-                let val = parseNumber(equMatch[2].trim());
-                if (isNaN(val)) val = equMatch[2].trim().charCodeAt(0);
+                let rawEqu = equMatch[2].trim();
+                let val = parseNumber(rawEqu);
+                if (isNaN(val)) {
+                    let ch = parseCharLiteral(rawEqu);
+                    val = ch ? ch.value : rawEqu.charCodeAt(0);
+                }
                 equates[name] = val;
                 parsedLines.push({ lineNum, original: originalLine, type: 'equ', name, value: val });
                 continue;
@@ -361,6 +388,7 @@ const Assembler = (() => {
             }
 
             let mnemonic = parts[1].toLowerCase();
+            if (MNEMONIC_ALIASES[mnemonic]) mnemonic = MNEMONIC_ALIASES[mnemonic];
             let operandStr = parts[2] ? parts[2].trim() : '';
 
             if (DIRECTIVES.includes(mnemonic) || mnemonic === '.model' || mnemonic === '.stack') {
@@ -386,6 +414,7 @@ const Assembler = (() => {
             if (REP_PREFIXES.includes(mnemonic) && operandStr) {
                 let restMnem = operandStr.toLowerCase().split(/\s+/)[0];
                 if (MNEMONICS.includes(restMnem) && !REP_PREFIXES.includes(restMnem)) {
+                    let restAlias = MNEMONIC_ALIASES[restMnem] || restMnem;
                     parsedLines.push({
                         lineNum, original: originalLine, type: 'instruction',
                         label, mnemonic, operandStr: '', index: instrIndex
@@ -393,7 +422,7 @@ const Assembler = (() => {
                     instrIndex++;
                     parsedLines.push({
                         lineNum, original: originalLine, type: 'instruction',
-                        label: null, mnemonic: restMnem,
+                        label: null, mnemonic: restAlias,
                         operandStr: operandStr.slice(restMnem.length).trim(),
                         index: instrIndex
                     });
@@ -458,6 +487,13 @@ const Assembler = (() => {
                     else if (memTypes.has(b.type) && a.type === 'register') b.size = a.size;
                     else if (memTypes.has(a.type) && b.type === 'immediate' && b.size === 16 && !a.sizeFromData) a.size = 16;
                     else if (memTypes.has(b.type) && a.type === 'immediate' && a.size === 16 && !b.sizeFromData) b.size = 16;
+                    else if (memTypes.has(a.type) && memTypes.has(b.type)) {
+                        // Memory-to-memory (EasyCPU extension): use WORD if either side is 16-bit
+                        if (a.size === 16 || b.size === 16) {
+                            a.size = 16;
+                            b.size = 16;
+                        }
+                    }
                 }
             }
 
