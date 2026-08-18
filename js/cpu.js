@@ -125,9 +125,18 @@ const CPU = (() => {
         else setReg16(op.reg, val);
     }
 
+    const REGS8 = ['al','ah','bl','bh','cl','ch','dl','dh'];
+
+    function registerOffset(name) {
+        if (!name) return 0;
+        name = name.toLowerCase();
+        if (REGS8.includes(name)) return getReg8(name);
+        return getReg16(name);
+    }
+
     function getSegBase(op) {
         if (op.segment) return getReg16(op.segment);
-        if (op.reg === 'bp' || op.reg === 'sp') return regs.ss;
+        if (op.reg === 'bp' || op.reg === 'sp' || op.reg2 === 'bp' || op.reg2 === 'sp') return regs.ss;
         return regs.ds;
     }
 
@@ -135,18 +144,16 @@ const CPU = (() => {
         let seg = getSegBase(op);
         if (op.type === 'memory_direct') return (seg + op.address) & 0xFFFF;
         if (op.type === 'memory_reg') {
-            let base = getReg16(op.reg) || getReg8(op.reg);
-            return (seg + base) & 0xFFFF;
+            return (seg + registerOffset(op.reg)) & 0xFFFF;
         }
         if (op.type === 'memory_reg_disp') {
-            let base = getReg16(op.reg) || getReg8(op.reg);
-            return (seg + base + op.disp) & 0xFFFF;
+            return (seg + registerOffset(op.reg) + (op.disp || 0)) & 0xFFFF;
         }
         if (op.type === 'memory_reg2') {
-            return (seg + getReg16(op.reg) + getReg16(op.reg2)) & 0xFFFF;
+            return (seg + registerOffset(op.reg) + registerOffset(op.reg2)) & 0xFFFF;
         }
         if (op.type === 'memory_reg2_disp') {
-            return (seg + getReg16(op.reg) + getReg16(op.reg2) + op.disp) & 0xFFFF;
+            return (seg + registerOffset(op.reg) + registerOffset(op.reg2) + (op.disp || 0)) & 0xFFFF;
         }
         return 0;
     }
@@ -323,6 +330,47 @@ const CPU = (() => {
                 osc.stop(audioCtx.currentTime + 0.05);
             }
         } catch (e) { /* audio not available */ }
+    }
+
+    function execStringOp(mnemonic) {
+        let delta = directionFlag ? -1 : 1;
+        switch (mnemonic) {
+            case 'movsb': {
+                let srcAddr = (regs.ds + regs.si) & 0xFFFF;
+                let dstAddr = (regs.es + regs.di) & 0xFFFF;
+                memory[dstAddr] = memory[srcAddr];
+                regs.si = (regs.si + delta) & 0xFFFF;
+                regs.di = (regs.di + delta) & 0xFFFF;
+                break;
+            }
+            case 'lodsb': {
+                let srcAddr = (regs.ds + regs.si) & 0xFFFF;
+                setReg8('al', memory[srcAddr]);
+                regs.si = (regs.si + delta) & 0xFFFF;
+                break;
+            }
+            case 'stosb': {
+                let dstAddr = (regs.es + regs.di) & 0xFFFF;
+                memory[dstAddr] = getReg8('al');
+                regs.di = (regs.di + delta) & 0xFFFF;
+                break;
+            }
+            case 'cmpsb': {
+                let a = memory[(regs.ds + regs.si) & 0xFFFF];
+                let b = memory[(regs.es + regs.di) & 0xFFFF];
+                updateFlags8(a - b, a, b, true);
+                regs.si = (regs.si + delta) & 0xFFFF;
+                regs.di = (regs.di + delta) & 0xFFFF;
+                break;
+            }
+            case 'scasb': {
+                let al = getReg8('al');
+                let b = memory[(regs.es + regs.di) & 0xFFFF];
+                updateFlags8(al - b, al, b, true);
+                regs.di = (regs.di + delta) & 0xFFFF;
+                break;
+            }
+        }
     }
 
     function step() {
@@ -856,105 +904,42 @@ const CPU = (() => {
                 break;
             }
 
-            case 'movsb': {
-                let srcAddr = (regs.ds + regs.si) & 0xFFFF;
-                let dstAddr = (regs.es + regs.di) & 0xFFFF;
-                memory[dstAddr] = memory[srcAddr];
-                let delta = directionFlag ? -1 : 1;
-                regs.si = (regs.si + delta) & 0xFFFF;
-                regs.di = (regs.di + delta) & 0xFFFF;
+            case 'movsb':
+                execStringOp('movsb');
                 break;
-            }
-
-            case 'lodsb': {
-                let srcAddr = (regs.ds + regs.si) & 0xFFFF;
-                setReg8('al', memory[srcAddr]);
-                regs.si = (regs.si + (directionFlag ? -1 : 1)) & 0xFFFF;
+            case 'lodsb':
+                execStringOp('lodsb');
                 break;
-            }
-
-            case 'stosb': {
-                let dstAddr = (regs.es + regs.di) & 0xFFFF;
-                memory[dstAddr] = getReg8('al');
-                regs.di = (regs.di + (directionFlag ? -1 : 1)) & 0xFFFF;
+            case 'stosb':
+                execStringOp('stosb');
                 break;
-            }
-
-            case 'cmpsb': {
-                let a = memory[(regs.ds + regs.si) & 0xFFFF];
-                let b = memory[(regs.es + regs.di) & 0xFFFF];
-                updateFlags8(a - b, a, b, true);
-                let delta = directionFlag ? -1 : 1;
-                regs.si = (regs.si + delta) & 0xFFFF;
-                regs.di = (regs.di + delta) & 0xFFFF;
+            case 'cmpsb':
+                execStringOp('cmpsb');
                 break;
-            }
-
-            case 'scasb': {
-                let al = getReg8('al');
-                let b = memory[(regs.es + regs.di) & 0xFFFF];
-                updateFlags8(al - b, al, b, true);
-                regs.di = (regs.di + (directionFlag ? -1 : 1)) & 0xFFFF;
+            case 'scasb':
+                execStringOp('scasb');
                 break;
-            }
 
             case 'rep': case 'repe': case 'repz': case 'repne': case 'repnz': {
                 let nextIp = regs.ip + 1;
                 if (nextIp < program.instructions.length) {
                     let nextInstr = program.instructions[nextIp];
+                    let stringOps = ['movsb', 'stosb', 'lodsb', 'cmpsb', 'scasb'];
                     let isRepNe = (instr.mnemonic === 'repne' || instr.mnemonic === 'repnz');
-                    while (regs.cx > 0) {
-                        regs.cx = (regs.cx - 1) & 0xFFFF;
-                        let savedIp = regs.ip;
-                        regs.ip = nextIp;
-                        let tmpOp = nextInstr.operands;
-                        switch (nextInstr.mnemonic) {
-                            case 'movsb': {
-                                let s = (regs.ds + regs.si) & 0xFFFF;
-                                let d = (regs.es + regs.di) & 0xFFFF;
-                                memory[d] = memory[s];
-                                let delta = directionFlag ? -1 : 1;
-                                regs.si = (regs.si + delta) & 0xFFFF;
-                                regs.di = (regs.di + delta) & 0xFFFF;
-                                break;
-                            }
-                            case 'stosb': {
-                                let d = (regs.es + regs.di) & 0xFFFF;
-                                memory[d] = getReg8('al');
-                                regs.di = (regs.di + (directionFlag ? -1 : 1)) & 0xFFFF;
-                                break;
-                            }
-                            case 'lodsb': {
-                                let s = (regs.ds + regs.si) & 0xFFFF;
-                                setReg8('al', memory[s]);
-                                regs.si = (regs.si + (directionFlag ? -1 : 1)) & 0xFFFF;
-                                break;
-                            }
-                            case 'cmpsb': {
-                                let a = memory[(regs.ds + regs.si) & 0xFFFF];
-                                let b2 = memory[(regs.es + regs.di) & 0xFFFF];
-                                updateFlags8(a - b2, a, b2, true);
-                                let dl = directionFlag ? -1 : 1;
-                                regs.si = (regs.si + dl) & 0xFFFF;
-                                regs.di = (regs.di + dl) & 0xFFFF;
-                                if (isRepNe && flags.zf === 1) { regs.cx = 0; }
-                                if (!isRepNe && flags.zf === 0) { regs.cx = 0; }
-                                break;
-                            }
-                            case 'scasb': {
-                                let al = getReg8('al');
-                                let b2 = memory[(regs.es + regs.di) & 0xFFFF];
-                                updateFlags8(al - b2, al, b2, true);
-                                regs.di = (regs.di + (directionFlag ? -1 : 1)) & 0xFFFF;
-                                if (isRepNe && flags.zf === 1) { regs.cx = 0; }
-                                if (!isRepNe && flags.zf === 0) { regs.cx = 0; }
-                                break;
+                    if (stringOps.includes(nextInstr.mnemonic)) {
+                        while (regs.cx > 0) {
+                            regs.cx = (regs.cx - 1) & 0xFFFF;
+                            execStringOp(nextInstr.mnemonic);
+                            if (nextInstr.mnemonic === 'cmpsb' || nextInstr.mnemonic === 'scasb') {
+                                // Keep remaining CX; do not zero it on early exit (8086 REPE/REPNE)
+                                if (isRepNe ? flags.zf === 1 : flags.zf === 0) break;
                             }
                         }
+                        // Skip the string instruction; REP already executed it
+                        regs.ip = nextIp + 1;
+                    } else {
+                        regs.ip = nextIp;
                     }
-                    let stringOps = ['movsb', 'stosb', 'lodsb', 'cmpsb', 'scasb'];
-                    // Skip the string instruction; REP already executed it CX times
-                    regs.ip = stringOps.includes(nextInstr.mnemonic) ? nextIp + 1 : nextIp;
                     jumped = true;
                 }
                 break;
