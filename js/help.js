@@ -25,7 +25,7 @@ each instruction step by step.</p>
 
 <h4>Quick Start (5 steps)</h4>
 <ol>
-<li>Select <strong>"Beginner: Hello LEDs"</strong> from the <strong>Samples</strong> dropdown (top-right).</li>
+<li>Select <strong>"Beginner: Hello Terminal"</strong> or <strong>"Beginner: Hello LEDs"</strong> from the <strong>Samples</strong> dropdown (top-right).</li>
 <li>Click <strong>Assemble</strong> &mdash; the console will say "Assembly successful".</li>
 <li>Click <strong>Step</strong> repeatedly to execute one instruction at a time. Watch the registers change!</li>
 <li>Or click <strong>Run</strong> to execute the whole program automatically.</li>
@@ -57,6 +57,7 @@ each instruction step by step.</p>
 <li><strong>Registers</strong> (right) &mdash; Shows the current value of every CPU register in hexadecimal. Values flash green when they change.</li>
 <li><strong>Flags</strong> (right) &mdash; Six status flags that change after arithmetic operations. A lit-up flag means its value is 1.</li>
 <li><strong>LED Output</strong> (right) &mdash; Eight virtual LEDs controlled by writing to port 2. Each LED represents one bit.</li>
+<li><strong>VT100 Terminal</strong> (under the editor) &mdash; 80&times;24 text screen. Print with <code>INT 21h</code> AH=09h or <code>OUT 8, AL</code>.</li>
 <li><strong>I/O Ports</strong> (right) &mdash; Set the input port value here. Your program reads it with <code>in al, 1</code>.</li>
 <li><strong>Stack</strong> (right) &mdash; Shows values on the stack. The arrow <code>&lt;-- SP</code> marks the current stack pointer position.</li>
 <li><strong>Memory Viewer</strong> (bottom) &mdash; A hex dump of memory. Switch between Data, Stack, and Code segments.</li>
@@ -280,7 +281,7 @@ it only changes the flags. Use it right before a conditional jump.</div>
 <tr><th>Instruction</th><th>What it Does</th></tr>
 <tr><td><code>NOP</code></td><td>Does nothing (no operation). Sometimes useful as a placeholder.</td></tr>
 <tr><td><code>HLT</code></td><td>Halts the CPU.</td></tr>
-<tr><td><code>INT 21h</code></td><td>Call a DOS interrupt. <code>AH=4Ch</code> exits the program.</td></tr>
+<tr><td><code>INT 21h</code></td><td>Call DOS. <code>AH=09h</code> prints a <code>$</code>-terminated string; <code>AH=02h</code> prints DL; <code>AH=01h</code> reads a key; <code>AH=4Ch</code> exits.</td></tr>
 </table>
 `
         },
@@ -451,6 +452,7 @@ extra features designed for deeper exploration of 8086 assembly.</p>
 <tr><td>7-Segment Display</td><td>Hidden</td><td><strong>Visible</strong> &mdash; port 3 output shown as a hex digit</td></tr>
 <tr><td>Pixel Display</td><td>Hidden</td><td><strong>Visible</strong> &mdash; 32&times;32 memory-mapped display</td></tr>
 <tr><td>Keyboard Input</td><td>Hidden</td><td><strong>Visible</strong> &mdash; type characters and read them via ports 5/6</td></tr>
+<tr><td>VT100 Terminal</td><td>Visible (basic print)</td><td><strong>Visible</strong> &mdash; ANSI colors, cursor, and typed input via port 8 / INT 21h</td></tr>
 <tr><td>Challenges</td><td>Hidden</td><td><strong>Visible</strong> &mdash; guided coding tasks with auto-grading</td></tr>
 <tr><td>Save / Load / Download</td><td>Hidden</td><td><strong>Visible</strong> &mdash; save programs to browser storage or download as <code>.asm</code></td></tr>
 </table>
@@ -585,6 +587,33 @@ the interrupt vector at memory address <code>0080h</code>&ndash;<code>0081h</cod
 <span class="kw">out</span> <span class="num">7</span>, <span class="reg">al</span>         <span class="cmt">; start timer</span></pre>
 <p>Write <code>0</code> to port 7 to disable the timer. Use <code>IRET</code> (not <code>RET</code>) to return from the handler.</p>
 
+<h4>VT100 Terminal (Port 8 / INT 21h)</h4>
+<p>An <strong>80&times;24 character terminal</strong> sits under the code editor. Programs send a byte stream;
+printable characters appear on the screen, and <code>ESC</code> (<code>1Bh</code>) starts VT100/ANSI control sequences
+(cursor movement, colors, clear screen). This is separate from the Output Console log.</p>
+<table class="help-table">
+<tr><th>How</th><th>What it Does</th></tr>
+<tr><td><code>OUT 8, AL</code></td><td>Write one raw byte to the terminal (including escape sequences)</td></tr>
+<tr><td><code>IN AL, 8</code></td><td>Read the next typed key (0 if none). Click the terminal first, then type.</td></tr>
+<tr><td><code>IN AL, 9</code></td><td>Status: bit 0 = a key is waiting, bit 1 = transmitter ready (always 1)</td></tr>
+<tr><td><code>INT 21h</code> <code>AH=09h</code></td><td>Print the <code>$</code>-terminated string at <code>DS:DX</code></td></tr>
+<tr><td><code>INT 21h</code> <code>AH=02h</code></td><td>Print the character in <code>DL</code> (LF expands to CR+LF, like DOS)</td></tr>
+<tr><td><code>INT 21h</code> <code>AH=01h</code></td><td>Wait for a key, return it in <code>AL</code>, and echo it</td></tr>
+</table>
+<pre><span class="lbl">msg</span> <span class="kw">db</span> <span class="num">'Hello$'</span>
+<span class="kw">mov</span> <span class="reg">dx</span>, <span class="kw">offset</span> <span class="lbl">msg</span>
+<span class="kw">mov</span> <span class="reg">ah</span>, <span class="num">9</span>
+<span class="kw">int</span> <span class="num">21h</span>          <span class="cmt">; prints Hello on the VT100 screen</span></pre>
+<p>Useful sequences (send <code>ESC</code> then the rest, or put them in a <code>DB</code> string):</p>
+<table class="help-table">
+<tr><th>Bytes</th><th>Effect</th></tr>
+<tr><td><code>ESC [ 2 J</code></td><td>Clear the screen</td></tr>
+<tr><td><code>ESC [ row ; col H</code></td><td>Move cursor (1-based row and column)</td></tr>
+<tr><td><code>ESC [ 31 m</code></td><td>Red text (30&ndash;37 = ANSI colors; 0 = reset)</td></tr>
+<tr><td><code>CR</code> / <code>LF</code> (<code>0Dh</code> / <code>0Ah</code>)</td><td>Carriage return / line feed</td></tr>
+</table>
+<div class="tip-box"><strong>Tip:</strong> Load <strong>Beginner: Hello Terminal</strong>, <strong>Advanced: VT100 Color</strong>, or <strong>Advanced: Terminal Echo</strong>.</div>
+
 <h4>Speaker (Port 61h)</h4>
 <p>Write a value with <strong>bit 0 set</strong> to port <code>61h</code> to produce a short beep sound.
 Clear bit 0 to stop. This mimics the classic PC speaker port.</p>
@@ -593,7 +622,7 @@ Clear bit 0 to stop. This mimics the classic PC speaker port.</p>
 <span class="kw">and</span> <span class="reg">al</span>, <span class="num">0FEh</span>      <span class="cmt">; clear bit 0</span>
 <span class="kw">out</span> <span class="num">61h</span>, <span class="reg">al</span>       <span class="cmt">; silence</span></pre>
 
-<div class="tip-box"><strong>Tip:</strong> Load the "Advanced: Pixel Drawing" or "Advanced: Keyboard Echo" samples to see these peripherals in action.</div>
+<div class="tip-box"><strong>Tip:</strong> Load the "Advanced: Pixel Drawing", "Advanced: Keyboard Echo", or "Advanced: VT100 Color" samples to see these peripherals in action.</div>
 `
         },
         {
@@ -612,6 +641,8 @@ Clear bit 0 to stop. This mimics the classic PC speaker port.</p>
 <tr><td><code>5</code></td><td>Read</td><td>Keyboard Character</td><td>Reads and removes the next ASCII character from the keyboard buffer. Returns 0 if empty. <em>(Advanced only)</em></td></tr>
 <tr><td><code>6</code></td><td>Read</td><td>Keyboard Buffer Length</td><td>Returns the number of characters waiting in the keyboard buffer (0&ndash;255). <em>(Advanced only)</em></td></tr>
 <tr><td><code>7</code></td><td>Write</td><td>Timer Interval</td><td>Sets the timer interrupt interval (in steps). 0 = disabled. Non-zero = fire interrupt every N steps. <em>(Advanced only)</em></td></tr>
+<tr><td><code>8</code></td><td>Read/Write</td><td>VT100 Data</td><td>Write: send a byte to the terminal. Read: next typed key, or 0 if none.</td></tr>
+<tr><td><code>9</code></td><td>Read</td><td>VT100 Status</td><td>Bit 0 set if a key is waiting. Bit 1 is always set (ready to transmit).</td></tr>
 <tr><td><code>61h</code></td><td>Write</td><td>PC Speaker</td><td>Bit 0 = 1 produces a short beep. Classic PC speaker emulation.</td></tr>
 </table>
 
@@ -747,7 +778,7 @@ the destination segment is always <strong>ES</strong>, not DS. Make sure to set 
 <h4>Interrupts</h4>
 <table class="help-table">
 <tr><th>Instruction</th><th>What it Does</th></tr>
-<tr><td><code>INT n</code></td><td>Software interrupt. Pushes flags and return address, jumps to handler. <code>INT 21h</code> with <code>AH=4Ch</code> exits the program.</td></tr>
+<tr><td><code>INT n</code></td><td>Software interrupt. <code>INT 21h</code> implements DOS functions: <code>AH=01h</code> read key, <code>AH=02h</code> write DL, <code>AH=09h</code> write <code>$</code>-string, <code>AH=4Ch</code> exit.</td></tr>
 <tr><td><code>IRET</code></td><td>Return from interrupt. Pops IP and flags from the stack. Use this (not RET) inside interrupt handlers.</td></tr>
 </table>
 <pre><span class="cmt">; Exit program</span>
@@ -1095,7 +1126,7 @@ register names you might misspell. Just type the first 2&ndash;3 letters and pre
         {
             id: 'quiz-peripherals',
             title: 'Quiz 4: Peripherals & I/O',
-            description: '5 questions about ports, LEDs, 7-segment display, keyboard, and pixel display.',
+            description: '6 questions about ports, LEDs, 7-segment display, keyboard, pixel display, and the VT100 terminal.',
             questions: [
                 {
                     q: '1. Which port number controls the LED display?',
@@ -1146,6 +1177,17 @@ register names you might misspell. Just type the first 2&ndash;3 letters and pre
                     ],
                     answer: 1,
                     explanation: 'Writing any value to port 4 triggers a refresh of the pixel display from the memory-mapped region at E000h.'
+                },
+                {
+                    q: '6. How do you print a <code>$</code>-terminated string on the VT100 terminal?',
+                    options: [
+                        '<code>OUT 2, AL</code>',
+                        '<code>INT 21h</code> with <code>AH=09h</code> and <code>DX</code> = offset of the string',
+                        'Write the string to memory E000h',
+                        '<code>IN AL, 8</code>'
+                    ],
+                    answer: 1,
+                    explanation: 'DOS function 09h prints the $-terminated string at DS:DX on the VT100 terminal. You can also send raw bytes with OUT 8, AL.'
                 }
             ]
         },

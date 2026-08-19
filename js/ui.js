@@ -31,6 +31,21 @@ const UI = (() => {
             if (typeof Peripherals !== 'undefined') return Peripherals.handlePortRead(port);
             return null;
         });
+        if (typeof CPU.setOnConsole === 'function') {
+            CPU.setOnConsole({
+                write: (b) => {
+                    if (typeof Peripherals !== 'undefined') Peripherals.terminalWrite(b);
+                },
+                read: () => {
+                    if (typeof Peripherals !== 'undefined') return Peripherals.terminalRead();
+                    return 0;
+                },
+                ready: () => {
+                    if (typeof Peripherals !== 'undefined') return Peripherals.terminalCanRead();
+                    return false;
+                }
+            });
+        }
         CPU.setOnHalt((msg) => {
             stopExecution();
             logConsole(msg, 'success');
@@ -187,6 +202,10 @@ const UI = (() => {
 
     function doStep() {
         if (!assembled || CPU.isHalted()) return;
+        if (typeof CPU.isBlockedOnInput === 'function' && CPU.isBlockedOnInput()) {
+            logConsole('Waiting for a key. Click the VT100 terminal, then type.', 'warn');
+            return;
+        }
         if (typeof Debugger !== 'undefined') Debugger.pushSnapshot();
         let result = CPU.step();
         if (typeof Debugger !== 'undefined') {
@@ -245,6 +264,10 @@ const UI = (() => {
                 stopExecution();
                 return;
             }
+            if (typeof CPU.isBlockedOnInput === 'function' && CPU.isBlockedOnInput()) {
+                runTimer = setTimeout(tick, Math.min(delay, 20));
+                return;
+            }
             if (typeof Debugger !== 'undefined') Debugger.pushSnapshot();
             let result = CPU.step();
             if (typeof Debugger !== 'undefined') {
@@ -279,6 +302,10 @@ const UI = (() => {
 
         let steps = 0;
         while (!CPU.isHalted() && steps < 100000) {
+            if (typeof CPU.isBlockedOnInput === 'function' && CPU.isBlockedOnInput()) {
+                logConsole('Waiting for a key. Click the VT100 terminal, then type.', 'warn');
+                break;
+            }
             if (typeof Debugger !== 'undefined') Debugger.pushSnapshot();
             let result = CPU.step();
             if (typeof Debugger !== 'undefined') {

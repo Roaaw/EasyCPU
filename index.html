@@ -6,7 +6,7 @@
     <title>EasyCPU - Free Online 8086 Assembly Simulator &amp; Debugger</title>
 
     <!-- SEO Meta Tags -->
-    <meta name="description" content="EasyCPU is a free online 8086 assembly language simulator. Write, assemble, debug, and run Intel 8086 programs directly in your browser with a visual CPU, registers, memory viewer, LEDs, 7-segment display, and pixel screen.">
+    <meta name="description" content="EasyCPU is a free online 8086 assembly language simulator. Write, assemble, debug, and run Intel 8086 programs directly in your browser with a visual CPU, registers, memory viewer, LEDs, 7-segment display, pixel screen, and VT100 terminal.">
     <meta name="keywords" content="8086 simulator, assembly language, 8086 emulator, Intel 8086, assembly simulator online, learn assembly, x86 assembly, CPU simulator, assembly debugger, 8086 programming, assembly language tutorial, online assembler, microprocessor simulator, computer architecture, low-level programming, 8086 instruction set, assembly code editor, CPU emulator online, learn x86, asm simulator, assembly IDE, machine code, register viewer, stack simulator, memory viewer, 8086 assembly examples, beginner assembly language, educational CPU simulator, Intel 8086 emulator online, free assembly simulator">
     <meta name="author" content="EasyCPU">
     <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
@@ -27,7 +27,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://easycpu.ioblako.com/">
     <meta property="og:title" content="EasyCPU - Free Online 8086 Assembly Simulator">
-    <meta property="og:description" content="Write, assemble, debug and run Intel 8086 assembly programs in your browser. Visual CPU with registers, memory, LEDs, 7-segment display and pixel screen.">
+    <meta property="og:description" content="Write, assemble, debug and run Intel 8086 assembly programs in your browser. Visual CPU with registers, memory, LEDs, 7-segment display, pixel screen, and VT100 terminal.">
     <meta property="og:image" content="https://easycpu.ioblako.com/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -38,7 +38,7 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="EasyCPU - Free Online 8086 Assembly Simulator">
-    <meta name="twitter:description" content="Write, assemble, debug and run Intel 8086 assembly programs in your browser. Visual CPU with registers, memory, LEDs, 7-segment display and pixel screen.">
+    <meta name="twitter:description" content="Write, assemble, debug and run Intel 8086 assembly programs in your browser. Visual CPU with registers, memory, LEDs, 7-segment display, pixel screen, and VT100 terminal.">
     <meta name="twitter:image" content="https://easycpu.ioblako.com/og-image.png">
     <meta name="twitter:image:alt" content="EasyCPU 8086 Assembly Simulator Interface">
 
@@ -65,7 +65,7 @@
         "name": "EasyCPU",
         "alternateName": "EasyCPU 8086 Simulator",
         "url": "https://easycpu.ioblako.com/",
-        "description": "Free online 8086 assembly language simulator. Write, assemble, debug, and run Intel 8086 programs directly in your browser with a visual CPU, registers, memory viewer, LEDs, 7-segment display, and pixel screen.",
+        "description": "Free online 8086 assembly language simulator. Write, assemble, debug, and run Intel 8086 programs directly in your browser with a visual CPU, registers, memory viewer, LEDs, 7-segment display, pixel screen, and VT100 terminal.",
         "applicationCategory": "EducationalApplication",
         "applicationSubCategory": "Programming Tool",
         "operatingSystem": "Any (Web Browser)",
@@ -93,6 +93,7 @@
             "LED Output Display",
             "7-Segment Display",
             "32x32 Pixel Display",
+            "VT100 Text Terminal",
             "I/O Port Simulation",
             "Keyboard Input Buffer",
             "Sample Programs Library",
@@ -114,7 +115,7 @@
                 "name": "What is EasyCPU?",
                 "acceptedAnswer": {
                     "@type": "Answer",
-                    "text": "EasyCPU is a free, browser-based Intel 8086 assembly language simulator and debugger. It lets you write, assemble, and execute 8086 assembly programs with a visual interface showing CPU registers, flags, memory, stack, LEDs, 7-segment displays, and a pixel screen."
+                    "text": "EasyCPU is a free, browser-based Intel 8086 assembly language simulator and debugger. It lets you write, assemble, and execute 8086 assembly programs with a visual interface showing CPU registers, flags, memory, stack, LEDs, 7-segment displays, a pixel screen, and a VT100 text terminal."
                 }
             },
             {
@@ -163,6 +164,7 @@
                 <li>LED output display (8 LEDs via Port 2)</li>
                 <li>7-segment display (Port 3)</li>
                 <li>32x32 pixel display (Port 4)</li>
+                <li>VT100 text terminal (Port 8 / INT 21h)</li>
                 <li>Keyboard input buffer (Port 5/6)</li>
                 <li>I/O port simulation</li>
                 <li>Sample programs library for learning</li>
@@ -228,6 +230,19 @@
                     placeholder="Write your 8086 assembly code here..."></textarea>
                 <pre id="highlight-overlay" class="adv" aria-hidden="true"></pre>
                 <div id="autocomplete-dropdown" class="adv ac-dropdown" style="display:none;"></div>
+            </div>
+            <div id="terminal-panel" class="panel">
+                <div class="panel-header" title="VT100 text terminal. Write bytes with OUT 8, AL or INT 21h AH=02h/09h. Click the screen and type; the program reads keys with IN AL, 8 or INT 21h AH=01h. Port 9 bit 0 = key waiting.">
+                    <span>VT100 Terminal (Port 8)</span>
+                    <span class="vt100-header-actions">
+                        <span id="vt100-status" class="vt100-status"></span>
+                        <button id="btn-clear-terminal" class="small-btn" type="button">Clear</button>
+                    </span>
+                </div>
+                <div class="panel-body" id="vt100-body">
+                    <div id="vt100-screen" tabindex="0" role="application" aria-label="VT100 terminal. Click then type to send keys to the program."></div>
+                    <div class="vt100-hint">Click the screen to type. OUT 8 / INT 21h AH=09h print here.</div>
+                </div>
             </div>
         </section>
 
@@ -419,6 +434,7 @@
     <script src="js/mode.js" defer></script>
     <script src="js/debugger.js" defer></script>
     <script src="js/highlight.js" defer></script>
+    <script src="js/vt100.js" defer></script>
     <script src="js/peripherals.js" defer></script>
     <script src="js/storage.js" defer></script>
     <script src="js/challenges.js" defer></script>

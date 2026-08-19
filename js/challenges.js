@@ -46,6 +46,15 @@ const Challenges = (() => {
             checks: [
                 { type: 'port', target: 2, expected: 20, message: 'Port 2 should show 20 (14h)' }
             ]
+        },
+        {
+            id: 'print-ok-terminal',
+            title: 'Print OK on the Terminal',
+            description: 'Print the letters OK on the VT100 terminal. Use INT 21h with AH=09h and a $-terminated string (or write the characters with OUT 8, AL).',
+            initialCode: '.model small\n.stack 100h\n.data\nmsg db \'OK$\'\n.code\nmov ax, @data\nmov ds, ax\n\n; Your code here: print OK on the VT100 terminal\n\nmov ah, 4ch\nint 21h\nend',
+            checks: [
+                { type: 'terminal', expected: 'OK', message: 'Terminal should contain OK' }
+            ]
         }
     ];
 
@@ -129,6 +138,10 @@ const Challenges = (() => {
                 }
                 actual = bytes;
                 passed = JSON.stringify(bytes) === JSON.stringify(check.expected);
+            } else if (check.type === 'terminal') {
+                actual = (typeof Peripherals !== 'undefined' && Peripherals.getTerminalText)
+                    ? Peripherals.getTerminalText() : '';
+                passed = String(actual).indexOf(check.expected) !== -1;
             }
 
             const icon = passed ? '<span class="check-pass">PASS</span>' : '<span class="check-fail">FAIL</span>';
