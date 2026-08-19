@@ -12,6 +12,9 @@ const CPU = (() => {
     let onPortWrite = null;
     let onPortRead = null;
     let onHalt = null;
+    let onConsoleWrite = null;
+    let onConsoleRead = null;
+    let onConsoleReady = null;
     let audioCtx = null;
     let directionFlag = 0;
 
@@ -762,6 +765,20 @@ const CPU = (() => {
                         if (onHalt) onHalt('Program terminated (INT 21h, AH=4Ch)');
                         return { halted: true, line: instr.sourceLine };
                     }
+                    if (ah === 0x02) {
+                        dosWriteChar(getReg8('dl'));
+                    } else if (ah === 0x09) {
+                        dosWriteString();
+                    } else if (ah === 0x01) {
+                        if (onConsoleReady && !onConsoleReady()) {
+                            stepCount--;
+                            jumped = true;
+                            break;
+                        }
+                        let ch = onConsoleRead ? (onConsoleRead() & 0xFF) : 0;
+                        setReg8('al', ch);
+                        dosEchoInput(ch);
+                    }
                 }
                 break;
             }
@@ -1049,9 +1066,58 @@ const CPU = (() => {
         ioPorts[port] = val & 0xFF;
     }
 
+    function isBlockedOnInput() {
+        if (halted || !program) return false;
+        if (regs.ip >= program.instructions.length) return false;
+        let instr = program.instructions[regs.ip];
+        if (!instr || instr.mnemonic !== 'int') return false;
+        if (getValue(instr.operands[0]) !== 0x21) return false;
+        if (getReg8('ah') !== 0x01) return false;
+        return !!(onConsoleReady && !onConsoleReady());
+    }
+
+    function dosWriteChar(ch) {
+        ch = ch & 0xFF;
+        if (!onConsoleWrite) return;
+        if (ch === 0x0A) {
+            onConsoleWrite(0x0D);
+            onConsoleWrite(0x0A);
+        } else {
+            onConsoleWrite(ch);
+        }
+    }
+
+    function dosEchoInput(ch) {
+        ch = ch & 0xFF;
+        if (!onConsoleWrite) return;
+        if (ch === 0x0D) {
+            onConsoleWrite(0x0D);
+            onConsoleWrite(0x0A);
+        } else {
+            dosWriteChar(ch);
+        }
+    }
+
+    function dosWriteString() {
+        if (!memory) return;
+        let addr = (regs.ds + regs.dx) & 0xFFFF;
+        for (let i = 0; i < 4096; i++) {
+            let b = memory[addr] || 0;
+            if (b === 0x24) break;
+            dosWriteChar(b);
+            addr = (addr + 1) & 0xFFFF;
+        }
+    }
+
     function setOnPortWrite(cb) { onPortWrite = cb; }
     function setOnPortRead(cb) { onPortRead = cb; }
     function setOnHalt(cb) { onHalt = cb; }
+    function setOnConsole(handlers) {
+        handlers = handlers || {};
+        onConsoleWrite = handlers.write || null;
+        onConsoleRead = handlers.read || null;
+        onConsoleReady = handlers.ready || null;
+    }
     function setMaxSteps(n) { maxSteps = n; }
 
     function createSnapshot() {
@@ -1096,9 +1162,9 @@ const CPU = (() => {
     return {
         init, loadProgram, reset, step,
         getState, getMemory, getIOPorts, isHalted, getProgram,
-        setInputPort, setOnPortWrite, setOnPortRead, setOnHalt, setMaxSteps,
+        setInputPort, setOnPortWrite, setOnPortRead, setOnHalt, setOnConsole, setMaxSteps,
         getStackEntries, getReg8, getReg16, setReg8, setReg16,
         pushStack, popStack, portRead, portWrite,
-        createSnapshot, restoreSnapshot
+        createSnapshot, restoreSnapshot, isBlockedOnInput
     };
 })();

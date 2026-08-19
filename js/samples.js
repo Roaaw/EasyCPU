@@ -23,6 +23,24 @@ mov ah, 4ch         ; DOS function: exit program
 int 21h             ; call DOS
 end`,
 
+"Beginner: Hello Terminal": `.model small        ; use the "small" memory model
+.stack 100h         ; reserve 256 bytes for the stack
+.data               ; data section — the message lives here
+msg db 'Hello, EasyCPU!', 13, 10, '$'   ; DOS string: CR, LF, ends with $
+.code
+mov ax, @data
+mov ds, ax          ; DS must point at .data before we print
+
+; INT 21h AH=09h prints the $-terminated string at DS:DX
+; Output appears on the VT100 terminal (not the log console)
+mov dx, offset msg
+mov ah, 9
+int 21h
+
+mov ah, 4ch         ; DOS function: exit program
+int 21h
+end`,
+
 "Beginner: Add Two Numbers": `.model small
 .stack 100h
 .data
@@ -712,6 +730,58 @@ mov al, 55h
 out 2, al
 
 mov ah,4ch
+int 21h
+end`,
+
+"Advanced: VT100 Color": `.model small
+.stack 100h
+.data
+cls  db 1Bh, '[2J', 1Bh, '[H$'
+red  db 1Bh, '[31mRed text', 1Bh, '[0m', 13, 10, '$'
+pos  db 1Bh, '[5;10HCursor at row 5, col 10', 13, 10, '$'
+.code
+mov ax, @data
+mov ds, ax
+
+; Clear screen (ESC [ 2 J) and home the cursor (ESC [ H)
+mov dx, offset cls
+mov ah, 9
+int 21h
+
+; SGR color: ESC [ 31 m  (red), then reset with ESC [ 0 m
+mov dx, offset red
+int 21h
+
+; CUP: ESC [ 5 ; 10 H  moves the cursor to row 5, column 10
+mov dx, offset pos
+int 21h
+
+mov ah, 4ch
+int 21h
+end`,
+
+"Advanced: Terminal Echo": `.model small
+.stack 100h
+.data
+prompt db 'Type keys (they echo). ESC to quit.', 13, 10, '$'
+.code
+mov ax, @data
+mov ds, ax
+
+mov dx, offset prompt
+mov ah, 9
+int 21h
+
+; Click the VT100 screen, then type. INT 21h AH=01 waits for a key.
+echo:
+    mov ah, 1
+    int 21h
+    cmp al, 1Bh          ; ESC?
+    je done
+    jmp echo
+
+done:
+mov ah, 4ch
 int 21h
 end`
 

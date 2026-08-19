@@ -14,6 +14,7 @@
 - **Memory Viewer** — Hex dump with Data, Stack, and Code segment views
 - **Stack Viewer** — Real-time stack contents with SP pointer
 - **I/O Peripherals** — LEDs (Port 2), 7-segment display (Port 3), 32×32 pixel screen (Port 4)
+- **VT100 Terminal** — 80×24 text screen (Port 8 / `INT 21h` AH=01h, 02h, 09h)
 - **Keyboard Input** — Type characters; program reads via Port 5/6
 - **Sample Programs** — Beginner and Advanced examples with comments
 - **Coding Challenges** — Auto-graded exercises (Set AX to 42, Light LEDs, Sort bytes, etc.)
@@ -25,10 +26,10 @@
 ## Quick Start
 
 1. Open the [live demo](https://easycpu.ioblako.com) or run locally (see below).
-2. Select **"Beginner: Hello LEDs"** from the Samples dropdown.
+2. Select **"Beginner: Hello Terminal"** or **"Beginner: Hello LEDs"** from the Samples dropdown.
 3. Click **Assemble** (or press `Ctrl+Enter`).
 4. Click **Step** to execute one instruction at a time, or **Run** to execute the whole program.
-5. Watch the registers, flags, and LEDs update in real time.
+5. Watch the terminal, registers, flags, and LEDs update in real time.
 
 ---
 
@@ -37,6 +38,7 @@
 | Sample | Description |
 |--------|-------------|
 | Beginner: Hello LEDs | Turn LEDs on and off with `out 2, al` |
+| Beginner: Hello Terminal | Print a string on the VT100 screen with `INT 21h` AH=09h |
 | Beginner: Add Two Numbers | Add 5 + 3 and display on LEDs |
 | Beginner: Countdown | Loop from 10 down to 0 |
 | Beginner: Compare and Branch | Use `cmp` and `jnz` for conditional jumps |
@@ -45,6 +47,8 @@
 | Advanced: String Copy | Copy bytes with `movsb` |
 | Advanced: Pixel Drawing | Draw on the 32×32 pixel display |
 | Advanced: Keyboard Echo | Read input from the keyboard buffer |
+| Advanced: VT100 Color | Clear the screen, set ANSI color, move the cursor |
+| Advanced: Terminal Echo | Read keys from the VT100 terminal with `INT 21h` AH=01h |
 | Advanced: Timer Interrupt | Use `int 1ch` for timing |
 
 ---
@@ -59,6 +63,19 @@
 | 4 | Pixel display refresh (32×32 at E000h–E3FFh) |
 | 5 | Keyboard input (read character) |
 | 6 | Keyboard buffer length |
+| 7 | Timer interrupt interval |
+| 8 | VT100 data (write byte / read key) |
+| 9 | VT100 status (bit 0 = key waiting) |
+| 61h | PC speaker (bit 0 = beep) |
+
+DOS `INT 21h` functions that talk to the same terminal:
+
+| AH | Function |
+|----|----------|
+| 01h | Wait for a key from the VT100 screen, return it in AL, and echo it |
+| 02h | Write the character in DL (LF becomes CR+LF) |
+| 09h | Write the `$`-terminated string at DS:DX |
+| 4Ch | Exit the program |
 
 ---
 
@@ -93,7 +110,8 @@ EasyCPU/
 │   ├── mode.js         # Beginner/Advanced toggle
 │   ├── debugger.js     # Breakpoints, trace
 │   ├── highlight.js    # Syntax highlighting
-│   ├── peripherals.js  # LEDs, 7-seg, keyboard, pixel display
+│   ├── peripherals.js  # LEDs, 7-seg, keyboard, pixel display, VT100
+│   ├── vt100.js        # VT100/ANSI terminal emulator
 │   ├── storage.js      # Save/Load/Download
 │   ├── challenges.js   # Coding challenges
 │   ├── help.js         # Help system
@@ -112,6 +130,17 @@ EasyCPU/
 - **HTML5, CSS3, JavaScript** — No frameworks, no build step
 - **Vanilla JS** — Plain modules loaded with `<script defer>`
 - **Dark theme** — Tokyo Night–inspired palette
+
+---
+
+## Tests
+
+From the repo root (Node.js):
+
+```bash
+node test/vt100.test.js
+node test/dos-console.test.js
+```
 
 ---
 
