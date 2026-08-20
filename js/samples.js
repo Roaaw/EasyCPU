@@ -664,8 +664,9 @@ end`,
 mov ax,@data
 mov ds,ax
 
-; Fill 32x32 pixel display with diagonal color pattern
-; Pixel memory E000h-E3FFh, colors 0-7
+; Fill the 32x32 pixel display (memory-mapped E000h-E3FFh).
+; Each byte is a color 0-7. Offsets E000h-E3FFh always hit the
+; framebuffer, even after mov ds, ax (DS = 1000h).
 mov bx, 0E000h
 mov cx, 0
 mov al, 0
@@ -679,7 +680,7 @@ fill:
     cmp cx, 1024
     jnz fill
 
-; Refresh display
+; Refresh display (the grid also updates live while you Step/Run)
 mov al, 1
 out 4, al
 

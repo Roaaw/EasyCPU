@@ -140,6 +140,7 @@ From the repo root (Node.js):
 ```bash
 node test/vt100.test.js
 node test/dos-console.test.js
+node test/pixel-display.test.js
 ```
 
 ---
