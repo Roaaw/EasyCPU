@@ -539,8 +539,10 @@ on a classic 7-segment display. The display shows digits <code>0</code>&ndash;<c
 <span class="kw">out</span> <span class="num">3</span>, <span class="reg">al</span>       <span class="cmt">; 7-segment shows "A"</span></pre>
 
 <h4>Pixel Display (Port 4 + Memory E000h&ndash;E3FFh)</h4>
-<p>A <strong>32&times;32 pixel grid</strong> (1,024 pixels) is memory-mapped at addresses
-<code>E000h</code> through <code>E3FFh</code>. Each byte controls one pixel's color:</p>
+<p>A <strong>32&times;32 pixel grid</strong> (1,024 pixels) is memory-mapped at offsets
+<code>E000h</code> through <code>E3FFh</code>. Those offsets always write the framebuffer
+(physical <code>E000h</code>), even when <code>DS</code> is your data segment
+(<code>@data</code> = <code>1000h</code>). Each byte controls one pixel&rsquo;s color:</p>
 <table class="help-table">
 <tr><th>Value (bits 0&ndash;2)</th><th>Color</th></tr>
 <tr><td>0</td><td>Black (background)</td></tr>
@@ -552,7 +554,8 @@ on a classic 7-segment display. The display shows digits <code>0</code>&ndash;<c
 <tr><td>6</td><td>Cyan</td></tr>
 <tr><td>7</td><td>White</td></tr>
 </table>
-<p>After writing pixel data to memory, write <em>any</em> value to <strong>port 4</strong> to refresh the display:</p>
+<p>After writing pixel data to memory, write <em>any</em> value to <strong>port 4</strong> to refresh the display.
+The grid also updates while you <strong>Step</strong> or <strong>Run</strong>:</p>
 <pre><span class="kw">mov</span> <span class="reg">bx</span>, <span class="num">0E000h</span>   <span class="cmt">; first pixel address</span>
 <span class="kw">mov</span> <span class="reg">al</span>, <span class="num">1</span>         <span class="cmt">; color 1 = green</span>
 <span class="kw">mov</span> [<span class="reg">bx</span>], <span class="reg">al</span>      <span class="cmt">; set pixel (0,0) to green</span>
@@ -637,7 +640,7 @@ Clear bit 0 to stop. This mimics the classic PC speaker port.</p>
 <tr><td><code>1</code></td><td>Read</td><td>Input Port</td><td>Returns the value set in the I/O Ports panel. Change it before running your program.</td></tr>
 <tr><td><code>2</code></td><td>Write</td><td>LED Display</td><td>8 LEDs. Each bit controls one LED (bit 0 = LED 0, bit 7 = LED 7).</td></tr>
 <tr><td><code>3</code></td><td>Write</td><td>7-Segment Display</td><td>Low nibble (bits 0&ndash;3) shown as a hex digit 0&ndash;F. <em>(Advanced only)</em></td></tr>
-<tr><td><code>4</code></td><td>Write</td><td>Pixel Display Refresh</td><td>Writing any value refreshes the 32&times;32 pixel grid from memory E000h. <em>(Advanced only)</em></td></tr>
+<tr><td><code>4</code></td><td>Write</td><td>Pixel Display Refresh</td><td>Writing any value refreshes the 32&times;32 pixel grid from memory E000h. The grid also updates while you Step or Run. <em>(Advanced only)</em></td></tr>
 <tr><td><code>5</code></td><td>Read</td><td>Keyboard Character</td><td>Reads and removes the next ASCII character from the keyboard buffer. Returns 0 if empty. <em>(Advanced only)</em></td></tr>
 <tr><td><code>6</code></td><td>Read</td><td>Keyboard Buffer Length</td><td>Returns the number of characters waiting in the keyboard buffer (0&ndash;255). <em>(Advanced only)</em></td></tr>
 <tr><td><code>7</code></td><td>Write</td><td>Timer Interval</td><td>Sets the timer interrupt interval (in steps). 0 = disabled. Non-zero = fire interrupt every N steps. <em>(Advanced only)</em></td></tr>
@@ -812,7 +815,7 @@ Here is how it is organized:</p>
 <tr><td><code>0082h&ndash;0FFFh</code></td><td>&mdash;</td><td>Available memory</td></tr>
 <tr><td><code>1000h + offset</code></td><td><code>DS</code></td><td><strong>Data Segment</strong> &mdash; your <code>.data</code> variables live here</td></tr>
 <tr><td><code>2000h + offset</code></td><td><code>SS</code></td><td><strong>Stack Segment</strong> &mdash; the stack (grows downward from SP = 0100h)</td></tr>
-<tr><td><code>E000h&ndash;E3FFh</code></td><td>&mdash;</td><td><strong>Pixel Display</strong> &mdash; 1,024 bytes, one per pixel (32&times;32 grid)</td></tr>
+<tr><td><code>E000h&ndash;E3FFh</code></td><td>&mdash;</td><td><strong>Pixel Display</strong> &mdash; 1,024 bytes, one per pixel (32&times;32 grid). Offsets in this range are memory-mapped (they ignore <code>DS</code>).</td></tr>
 </table>
 
 <h4>Segment:Offset Addressing</h4>

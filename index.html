@@ -317,6 +317,14 @@
                 </div>
             </div>
 
+            <div id="pixel-panel" class="panel adv">
+                <div class="panel-header" title="32x32 pixel display. Memory-mapped at E000h-E3FFh. Write color 0-7 to each byte. OUT 4 refreshes; the grid also updates while you Step or Run.">Pixel Display (Port 4)</div>
+                <div class="panel-body" id="pixel-body">
+                    <div id="pixel-grid" class="pixel-grid"></div>
+                    <div class="pixel-hint">E000h–E3FFh, colors 0–7. OUT 4 refreshes.</div>
+                </div>
+            </div>
+
             <div id="io-panel" class="panel">
                 <div class="panel-header" title="Set a hex value for input port 1. Your program reads it with 'in al, 1'.">I/O Ports</div>
                 <div class="panel-body" id="io-body">
@@ -349,13 +357,6 @@
                 <div class="panel-header" title="The stack stores temporary values.">Stack</div>
                 <div class="panel-body" id="stack-body">
                     <div id="stack-content"></div>
-                </div>
-            </div>
-
-            <div id="pixel-panel" class="panel adv">
-                <div class="panel-header" title="32x32 pixel display. Memory E000h-E3FFh. Write to port 4 to refresh.">Pixel Display (Port 4)</div>
-                <div class="panel-body" id="pixel-body">
-                    <div id="pixel-grid" class="pixel-grid"></div>
                 </div>
             </div>
 

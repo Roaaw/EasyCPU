@@ -1389,18 +1389,35 @@ body:not(.advanced-mode) .adv { display: none !important; }
 }
 
 /* ---- PIXEL DISPLAY ---- */
+#pixel-body {
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
 .pixel-grid {
     display: grid;
     grid-template-columns: repeat(32, 6px);
     grid-template-rows: repeat(32, 6px);
     gap: 0;
     justify-content: center;
+    background: #0f0f23;
+    border: 1px solid var(--border-color);
+    padding: 2px;
 }
 
 .pixel {
     width: 6px;
     height: 6px;
     background: #0f0f23;
+}
+
+.pixel-hint {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--text-muted);
+    text-align: center;
 }
 
 /* ---- KEYBOARD PANEL ---- */

@@ -385,6 +385,9 @@ const UI = (() => {
         updateStack();
         let ports = CPU.getIOPorts();
         if (ports[2] !== undefined) updateLEDs(ports[2]);
+        if (typeof Peripherals !== 'undefined' && Peripherals.refreshPixelDisplay) {
+            Peripherals.refreshPixelDisplay();
+        }
     }
 
     function refreshAll() {

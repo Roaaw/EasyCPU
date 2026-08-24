@@ -143,22 +143,34 @@ const CPU = (() => {
         return regs.ds;
     }
 
-    function effectiveAddress(op) {
-        let seg = getSegBase(op);
-        if (op.type === 'memory_direct') return (seg + op.address) & 0xFFFF;
-        if (op.type === 'memory_reg') {
-            return (seg + registerOffset(op.reg)) & 0xFFFF;
-        }
+    // Pixel framebuffer is memory-mapped at physical E000h-E3FFh. Offsets in
+    // that range target the display even when DS is the data segment (1000h).
+    const PIXEL_VRAM = 0xE000;
+    const PIXEL_VRAM_END = 0xE400;
+
+    function physAddr(seg, offset) {
+        offset = offset & 0xFFFF;
+        if (offset >= PIXEL_VRAM && offset < PIXEL_VRAM_END) return offset;
+        return ((seg || 0) + offset) & 0xFFFF;
+    }
+
+    function memoryOffset(op) {
+        if (op.type === 'memory_direct') return (op.address || 0) & 0xFFFF;
+        if (op.type === 'memory_reg') return registerOffset(op.reg) & 0xFFFF;
         if (op.type === 'memory_reg_disp') {
-            return (seg + registerOffset(op.reg) + (op.disp || 0)) & 0xFFFF;
+            return (registerOffset(op.reg) + (op.disp || 0)) & 0xFFFF;
         }
         if (op.type === 'memory_reg2') {
-            return (seg + registerOffset(op.reg) + registerOffset(op.reg2)) & 0xFFFF;
+            return (registerOffset(op.reg) + registerOffset(op.reg2)) & 0xFFFF;
         }
         if (op.type === 'memory_reg2_disp') {
-            return (seg + registerOffset(op.reg) + registerOffset(op.reg2) + (op.disp || 0)) & 0xFFFF;
+            return (registerOffset(op.reg) + registerOffset(op.reg2) + (op.disp || 0)) & 0xFFFF;
         }
         return 0;
+    }
+
+    function effectiveAddress(op) {
+        return physAddr(getSegBase(op), memoryOffset(op));
     }
 
     function readMem(op) {
@@ -339,28 +351,28 @@ const CPU = (() => {
         let delta = directionFlag ? -1 : 1;
         switch (mnemonic) {
             case 'movsb': {
-                let srcAddr = (regs.ds + regs.si) & 0xFFFF;
-                let dstAddr = (regs.es + regs.di) & 0xFFFF;
+                let srcAddr = physAddr(regs.ds, regs.si);
+                let dstAddr = physAddr(regs.es, regs.di);
                 memory[dstAddr] = memory[srcAddr];
                 regs.si = (regs.si + delta) & 0xFFFF;
                 regs.di = (regs.di + delta) & 0xFFFF;
                 break;
             }
             case 'lodsb': {
-                let srcAddr = (regs.ds + regs.si) & 0xFFFF;
+                let srcAddr = physAddr(regs.ds, regs.si);
                 setReg8('al', memory[srcAddr]);
                 regs.si = (regs.si + delta) & 0xFFFF;
                 break;
             }
             case 'stosb': {
-                let dstAddr = (regs.es + regs.di) & 0xFFFF;
+                let dstAddr = physAddr(regs.es, regs.di);
                 memory[dstAddr] = getReg8('al');
                 regs.di = (regs.di + delta) & 0xFFFF;
                 break;
             }
             case 'cmpsb': {
-                let a = memory[(regs.ds + regs.si) & 0xFFFF];
-                let b = memory[(regs.es + regs.di) & 0xFFFF];
+                let a = memory[physAddr(regs.ds, regs.si)];
+                let b = memory[physAddr(regs.es, regs.di)];
                 updateFlags8(a - b, a, b, true);
                 regs.si = (regs.si + delta) & 0xFFFF;
                 regs.di = (regs.di + delta) & 0xFFFF;
@@ -368,7 +380,7 @@ const CPU = (() => {
             }
             case 'scasb': {
                 let al = getReg8('al');
-                let b = memory[(regs.es + regs.di) & 0xFFFF];
+                let b = memory[physAddr(regs.es, regs.di)];
                 updateFlags8(al - b, al, b, true);
                 regs.di = (regs.di + delta) & 0xFFFF;
                 break;
