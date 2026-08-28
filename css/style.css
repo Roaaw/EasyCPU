@@ -773,6 +773,16 @@ select:focus, button:focus, input:focus, textarea:focus {
     text-underline-offset: 2px;
 }
 
+.mem-val-ip {
+    background: rgba(122, 162, 247, 0.30);
+    outline: 1px solid var(--accent-blue);
+    border-radius: 2px;
+}
+
+.mem-val-label-code {
+    text-decoration-color: var(--accent-cyan);
+}
+
 #data-symbols {
     display: flex;
     flex-wrap: wrap;

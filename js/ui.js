@@ -293,8 +293,16 @@ const UI = (() => {
     function getNextLine() {
         if (!assembled) return -1;
         let ip = CPU.getState().regs.ip;
-        if (ip < assembled.instructions.length) {
-            return assembled.instructions[ip].sourceLine;
+        let idx = -1;
+        if (assembled.offsetToIndex && assembled.offsetToIndex[ip] !== undefined) {
+            idx = assembled.offsetToIndex[ip];
+        } else if (assembled.codeOffsets) {
+            idx = assembled.codeOffsets.indexOf(ip);
+        } else if (ip < assembled.instructions.length) {
+            idx = ip;
+        }
+        if (idx >= 0 && idx < assembled.instructions.length) {
+            return assembled.instructions[idx].sourceLine;
         }
         return -1;
     }
@@ -604,6 +612,33 @@ const UI = (() => {
             }
         }
 
+        let codeInfoAtOffset = {};
+        let labelAtCodeOffset = {};
+        let ipOffset = -1;
+        if (segment === 'cs' && assembled && assembled.codeOffsets && assembled.instructions) {
+            ipOffset = CPU.getState().regs.ip;
+            for (let i = 0; i < assembled.instructions.length; i++) {
+                const off = assembled.codeOffsets[i];
+                const nextOff = (i + 1 < assembled.codeOffsets.length) ? assembled.codeOffsets[i + 1] : (assembled.codeLength || off + 1);
+                const instr = assembled.instructions[i];
+                const info = `${instr.mnemonic} (line ${instr.sourceLine})`;
+                for (let b = off; b < nextOff; b++) {
+                    codeInfoAtOffset[b] = info;
+                }
+                if (instr.label) labelAtCodeOffset[off] = instr.label;
+            }
+            // labels that point to instruction index (e.g., jmp target) also map to byte offset
+            if (assembled.labels) {
+                for (const [name, idx] of Object.entries(assembled.labels)) {
+                    if (assembled.codeOffsets[idx] !== undefined && labelAtCodeOffset[assembled.codeOffsets[idx]] === undefined) {
+                        // only code labels (those with codeOffsets), data labels are in DS
+                        if (assembled.dataSizes && assembled.dataSizes[name]) continue;
+                        labelAtCodeOffset[assembled.codeOffsets[idx]] = name;
+                    }
+                }
+            }
+        }
+
         for (let row = 0; row < rows; row++) {
             let addr = (segBase + startAddr + row * 16) & 0xFFFF;
             let addrStr = '<span class="mem-addr">' +
@@ -620,6 +655,17 @@ const UI = (() => {
                 if (segment === 'ds' && labelAtOffset[dataOff]) {
                     title = ' title="' + labelAtOffset[dataOff] + '"';
                     cls += ' mem-val-label';
+                } else if (segment === 'cs' && codeInfoAtOffset[dataOff] !== undefined) {
+                    const label = labelAtCodeOffset[dataOff];
+                    const info = codeInfoAtOffset[dataOff];
+                    const tip = label ? label + ': ' + info : info;
+                    title = ' title="' + tip.replace(/"/g, '&quot;') + '"';
+                    cls += ' mem-val-label';
+                    if (dataOff === ipOffset) cls += ' mem-val-ip';
+                    else if (label) cls += ' mem-val-label-code';
+                } else if (segment === 'cs' && dataOff === ipOffset) {
+                    title = ' title="IP → ' + (codeInfoAtOffset[dataOff] || 'code') + '"';
+                    cls += ' mem-val-ip';
                 }
                 hexPart += '<span class="' + cls + '"' + title + '>' +
                     b.toString(16).toUpperCase().padStart(2, '0') + '</span> ';

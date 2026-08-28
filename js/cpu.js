@@ -37,6 +37,7 @@ const CPU = (() => {
         program = assembled;
         regs.ip = 0;
         regs.ds = assembled.dataSegAddr & 0xFFFF;
+        regs.cs = 0x0000;
         halted = false;
         stepCount = 0;
 
@@ -44,6 +45,123 @@ const CPU = (() => {
             let physAddr = (regs.ds + parseInt(addr)) & 0xFFFF;
             memory[physAddr] = assembled.dataBytes[addr];
         }
+        // --- Code segment: encode instructions as bytes at CS:0 (8086-like) ---
+        const { codeBytes, codeOffsets, offsetToIndex } = encodeCodeBytes(assembled.instructions);
+        assembled.codeBytes = codeBytes;
+        assembled.codeOffsets = codeOffsets;
+        assembled.offsetToIndex = offsetToIndex;
+        assembled.codeLength = codeBytes.length;
+        for (let i = 0; i < codeBytes.length; i++) {
+            let physAddr = (regs.cs + i) & 0xFFFF;
+            if (physAddr >= regs.ds && physAddr < regs.ds + 0x1000) continue;
+            memory[physAddr] = codeBytes[i];
+        }
+    }
+
+    function encodeCodeBytes(instructions) {
+        if (!instructions || !instructions.length) return { codeBytes: [], codeOffsets: [], offsetToIndex: {} };
+        const REG8_INTEL = { al:0, cl:1, dl:2, bl:3, ah:4, ch:5, dh:6, bh:7 };
+        const REG16_INTEL = { ax:0, cx:1, dx:2, bx:3, sp:4, bp:5, si:6, di:7 };
+        const REG_CODE = { al:0, ah:1, bl:2, bh:3, cl:4, ch:5, dl:6, dh:7, ax:8, bx:9, cx:10, dx:11, sp:12, bp:13, si:14, di:15, ip:16, ds:17, ss:18, cs:19, es:20 };
+        function isMovRegImm(instr) {
+            return instr.mnemonic === 'mov' && instr.operands && instr.operands[0]?.type === 'register' && instr.operands[1]?.type === 'immediate';
+        }
+        // First compute byte length per instruction to build offsets (label targets need byte offsets)
+        function instrByteLen(instr) {
+            if (isMovRegImm(instr)) {
+                const r = instr.operands[0].reg;
+                const is8 = REG8_INTEL[r] !== undefined;
+                return 1 + (is8 ? 1 : 2);
+            }
+            let len = 1; // opcode
+            for (let o of instr.operands || []) {
+                if (!o) continue;
+                if (o.type === 'register') len += 1;
+                else if (o.type === 'immediate') len += (o.size === 16 ? 2 : 1);
+                else if (o.type === 'memory_direct') len += 2;
+                else if (o.type === 'memory_reg') len += 1;
+                else if (o.type === 'memory_reg_disp' || o.type === 'memory_reg2_disp') len += 3;
+                else if (o.type === 'memory_reg2') len += 1;
+                else if (o.type === 'label') len += 2;
+                else if (o.type === 'unknown') len += 1;
+            }
+            return len;
+        }
+        const codeOffsets = [];
+        const offsetToIndex = {};
+        let off = 0;
+        for (let i = 0; i < instructions.length; i++) {
+            codeOffsets.push(off);
+            offsetToIndex[off] = i;
+            off += instrByteLen(instructions[i]);
+        }
+        // Now encode with correct byte offsets for label operands
+        const bytes = [];
+        for (let i = 0; i < instructions.length; i++) {
+            const instr = instructions[i];
+            if (isMovRegImm(instr)) {
+                const r = instr.operands[0].reg;
+                const imm = instr.operands[1].value;
+                if (REG8_INTEL[r] !== undefined) {
+                    bytes.push(0xB0 + REG8_INTEL[r]);
+                    bytes.push(imm & 0xFF);
+                } else if (REG16_INTEL[r] !== undefined) {
+                    bytes.push(0xB8 + REG16_INTEL[r]);
+                    bytes.push(imm & 0xFF);
+                    bytes.push((imm >> 8) & 0xFF);
+                } else {
+                    // fallback
+                    let op = 0;
+                    for (let k = 0; k < instr.mnemonic.length; k++) op = (op * 31 + instr.mnemonic.charCodeAt(k)) & 0xFF;
+                    if (op === 0) op = 0x90;
+                    bytes.push(op);
+                    bytes.push(REG_CODE[r] ?? 0xFF);
+                    bytes.push(imm & 0xFF);
+                    if (instr.operands[1].size === 16) bytes.push((imm >> 8) & 0xFF);
+                }
+                continue;
+            }
+            let op = 0;
+            for (let k = 0; k < instr.mnemonic.length; k++) op = (op * 31 + instr.mnemonic.charCodeAt(k)) & 0xFF;
+            if (op === 0) op = 0x90;
+            bytes.push(op);
+            for (let o of instr.operands || []) {
+                if (!o) continue;
+                if (o.type === 'register') {
+                    bytes.push(REG_CODE[o.reg] ?? 0xFF);
+                } else if (o.type === 'immediate') {
+                    bytes.push(o.value & 0xFF);
+                    if (o.size === 16) bytes.push((o.value >> 8) & 0xFF);
+                } else if (o.type === 'memory_direct') {
+                    bytes.push(o.address & 0xFF);
+                    bytes.push((o.address >> 8) & 0xFF);
+                } else if (o.type === 'memory_reg' || o.type === 'memory_reg_disp' || o.type === 'memory_reg2' || o.type === 'memory_reg2_disp') {
+                    bytes.push(REG_CODE[o.reg] ?? 0);
+                    if (o.disp !== undefined) { bytes.push(o.disp & 0xFF); bytes.push((o.disp >> 8) & 0xFF); }
+                } else if (o.type === 'label') {
+                    const targetOffset = codeOffsets[o.address] ?? 0;
+                    bytes.push(targetOffset & 0xFF);
+                    bytes.push((targetOffset >> 8) & 0xFF);
+                } else if (o.type === 'unknown') {
+                    bytes.push(0xCC);
+                }
+            }
+        }
+        return { codeBytes: bytes, codeOffsets, offsetToIndex };
+    }
+
+    function ipToIndex(ip) {
+        if (!program || !program.offsetToIndex) return -1;
+        if (program.offsetToIndex[ip] !== undefined) return program.offsetToIndex[ip];
+        // fallback: find nearest (should not happen if IP always at instruction boundary)
+        return -1;
+    }
+
+    function nextIpOffset(currentIdx) {
+        if (!program || !program.codeOffsets) return regs.ip + 1;
+        const nextIdx = currentIdx + 1;
+        if (nextIdx < program.codeOffsets.length) return program.codeOffsets[nextIdx];
+        return program.codeLength || regs.ip + 1;
     }
 
     function reset() {
@@ -390,9 +508,17 @@ const CPU = (() => {
 
     function step() {
         if (halted || !program) return { halted: true };
-        if (regs.ip >= program.instructions.length) {
+        const curIdx = ipToIndex(regs.ip);
+        if (curIdx < 0 || curIdx >= program.instructions.length) {
+            // allow IP == codeLength as end
+            if (regs.ip === (program.codeLength || 0)) {
+                halted = true;
+                if (onHalt) onHalt('Program ended (no more instructions)');
+                return { halted: true };
+            }
+            // misaligned IP - halt
             halted = true;
-            if (onHalt) onHalt('Program ended (no more instructions)');
+            if (onHalt) onHalt('Invalid IP (misaligned code)');
             return { halted: true };
         }
         if (stepCount >= maxSteps) {
@@ -402,9 +528,10 @@ const CPU = (() => {
         }
 
         stepCount++;
-        let instr = program.instructions[regs.ip];
+        let instr = program.instructions[curIdx];
         let op = instr.operands;
         let jumped = false;
+        let curIpOffset = regs.ip;
 
         switch (instr.mnemonic) {
             case 'nop':
@@ -634,7 +761,7 @@ const CPU = (() => {
             case 'jmp': {
                 let target = op[0];
                 if (target.type === 'label') {
-                    regs.ip = target.address;
+                    regs.ip = program.codeOffsets[target.address] ?? 0;
                 } else {
                     regs.ip = getValue(target);
                 }
@@ -644,7 +771,7 @@ const CPU = (() => {
 
             case 'jz': case 'je': {
                 if (flags.zf === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -652,7 +779,7 @@ const CPU = (() => {
 
             case 'jnz': case 'jne': {
                 if (flags.zf === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -660,7 +787,7 @@ const CPU = (() => {
 
             case 'jc': case 'jb': {
                 if (flags.cf === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -668,7 +795,7 @@ const CPU = (() => {
 
             case 'jnc': case 'jae': {
                 if (flags.cf === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -676,7 +803,7 @@ const CPU = (() => {
 
             case 'js': {
                 if (flags.sf === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -684,7 +811,7 @@ const CPU = (() => {
 
             case 'jns': {
                 if (flags.sf === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -692,7 +819,7 @@ const CPU = (() => {
 
             case 'jo': {
                 if (flags.of === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -700,7 +827,7 @@ const CPU = (() => {
 
             case 'jno': {
                 if (flags.of === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -708,7 +835,7 @@ const CPU = (() => {
 
             case 'jg': case 'jnle': {
                 if (flags.zf === 0 && flags.sf === flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -716,7 +843,7 @@ const CPU = (() => {
 
             case 'jge': case 'jnl': {
                 if (flags.sf === flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -724,7 +851,7 @@ const CPU = (() => {
 
             case 'jl': case 'jnge': {
                 if (flags.sf !== flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -732,7 +859,7 @@ const CPU = (() => {
 
             case 'jle': case 'jng': {
                 if (flags.zf === 1 || flags.sf !== flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -740,7 +867,7 @@ const CPU = (() => {
 
             case 'ja': case 'jnbe': {
                 if (flags.cf === 0 && flags.zf === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -748,16 +875,15 @@ const CPU = (() => {
 
             case 'jbe': case 'jna': {
                 if (flags.cf === 1 || flags.zf === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
             }
 
             case 'call': {
-                let target = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
-                pushStack(regs.ip + 1);
-                regs.ip = target;
+                pushStack(nextIpOffset(curIdx));
+                regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                 jumped = true;
                 break;
             }
@@ -909,7 +1035,7 @@ const CPU = (() => {
             case 'loop': {
                 regs.cx = (regs.cx - 1) & 0xFFFF;
                 if (regs.cx !== 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -918,7 +1044,7 @@ const CPU = (() => {
             case 'loope': case 'loopz': {
                 regs.cx = (regs.cx - 1) & 0xFFFF;
                 if (regs.cx !== 0 && flags.zf === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -927,7 +1053,7 @@ const CPU = (() => {
             case 'loopne': case 'loopnz': {
                 regs.cx = (regs.cx - 1) & 0xFFFF;
                 if (regs.cx !== 0 && flags.zf === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -950,9 +1076,10 @@ const CPU = (() => {
                 break;
 
             case 'rep': case 'repe': case 'repz': case 'repne': case 'repnz': {
-                let nextIp = regs.ip + 1;
-                if (nextIp < program.instructions.length) {
-                    let nextInstr = program.instructions[nextIp];
+                let nextIdx = curIdx + 1;
+                let nextIp = nextIdx < program.instructions.length ? program.codeOffsets[nextIdx] : program.codeLength;
+                if (nextIdx < program.instructions.length) {
+                    let nextInstr = program.instructions[nextIdx];
                     let stringOps = ['movsb', 'stosb', 'lodsb', 'cmpsb', 'scasb'];
                     let isRepNe = (instr.mnemonic === 'repne' || instr.mnemonic === 'repnz');
                     if (stringOps.includes(nextInstr.mnemonic)) {
@@ -965,7 +1092,7 @@ const CPU = (() => {
                             }
                         }
                         // Skip the string instruction; REP already executed it
-                        regs.ip = nextIp + 1;
+                        regs.ip = (nextIdx + 1 < program.codeOffsets.length ? program.codeOffsets[nextIdx+1] : program.codeLength);
                     } else {
                         regs.ip = nextIp;
                     }
@@ -1004,42 +1131,42 @@ const CPU = (() => {
 
             case 'jnle': {
                 if (flags.zf === 0 && flags.sf === flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
             }
             case 'jnl': {
                 if (flags.sf === flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
             }
             case 'jnge': {
                 if (flags.sf !== flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
             }
             case 'jng': {
                 if (flags.zf === 1 || flags.sf !== flags.of) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
             }
             case 'jnbe': {
                 if (flags.cf === 0 && flags.zf === 0) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
             }
             case 'jna': {
                 if (flags.cf === 1 || flags.zf === 1) {
-                    regs.ip = (op[0].type === 'label') ? op[0].address : getValue(op[0]);
+                    regs.ip = (op[0].type === 'label') ? (program.codeOffsets[op[0].address] ?? 0) : getValue(op[0]);
                     jumped = true;
                 }
                 break;
@@ -1050,7 +1177,7 @@ const CPU = (() => {
         }
 
         if (!jumped) {
-            regs.ip++;
+            regs.ip = nextIpOffset(curIdx);
         }
 
         return {
@@ -1080,8 +1207,9 @@ const CPU = (() => {
 
     function isBlockedOnInput() {
         if (halted || !program) return false;
-        if (regs.ip >= program.instructions.length) return false;
-        let instr = program.instructions[regs.ip];
+        const idx = ipToIndex(regs.ip);
+        if (idx < 0 || idx >= program.instructions.length) return false;
+        let instr = program.instructions[idx];
         if (!instr || instr.mnemonic !== 'int') return false;
         if (getValue(instr.operands[0]) !== 0x21) return false;
         if (getReg8('ah') !== 0x01) return false;
