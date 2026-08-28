@@ -221,8 +221,15 @@
 
     <main id="app">
         <section id="editor-panel">
-            <div class="panel-header" title="Write your 8086 assembly code here. Press Assemble to compile, then Run or Step to execute.">Code Editor
-                <span id="cycle-counter" class="adv cycle-counter"></span>
+            <div class="panel-header" title="Write your 8086 assembly code here. Press Assemble to compile, then Run or Step to execute.">
+                <span>Code Editor</span>
+                <span class="header-actions editor-zoom-controls">
+                    <span id="cycle-counter" class="adv cycle-counter"></span>
+                    <button id="btn-zoom-out" class="small-btn" title="Decrease zoom (Ctrl+-)">−</button>
+                    <input type="range" id="zoom-slider" min="80" max="300" value="100" title="Zoom">
+                    <button id="btn-zoom-in" class="small-btn" title="Increase zoom (Ctrl++)">+</button>
+                    <span id="zoom-label" class="zoom-label">100%</span>
+                </span>
             </div>
             <div id="editor-container">
                 <div id="line-numbers"></div>
@@ -231,11 +238,17 @@
                 <pre id="highlight-overlay" class="adv" aria-hidden="true"></pre>
                 <div id="autocomplete-dropdown" class="adv ac-dropdown" style="display:none;"></div>
             </div>
-            <div id="editor-vt100-resizer" class="panel-resizer" title="Arraste para redimensionar Code Editor / VT100"></div>
+            <div id="editor-vt100-resizer" class="panel-resizer" title="Drag to resize Code Editor / VT100"></div>
             <div id="terminal-panel" class="panel">
                 <div class="panel-header" title="VT100 text terminal. Write bytes with OUT 8, AL or INT 21h AH=02h/09h. Click the screen and type; the program reads keys with IN AL, 8 or INT 21h AH=01h. Port 9 bit 0 = key waiting.">
                     <span>VT100 Terminal (Port 8)</span>
-                    <span class="vt100-header-actions">
+                    <span class="header-actions vt100-header-actions">
+                        <span class="editor-zoom-controls header-actions" style="gap:4px">
+                            <button id="btn-zoom-out-vt100" class="small-btn" title="Decrease VT100 zoom">−</button>
+                            <input type="range" id="zoom-slider-vt100" min="80" max="300" value="100" title="Zoom VT100">
+                            <button id="btn-zoom-in-vt100" class="small-btn" title="Increase VT100 zoom">+</button>
+                            <span id="zoom-label-vt100" class="zoom-label">100%</span>
+                        </span>
                         <span id="vt100-status" class="vt100-status"></span>
                         <button id="btn-clear-terminal" class="small-btn" type="button">Clear</button>
                     </span>
@@ -287,8 +300,8 @@
 
             <div id="led-panel" class="panel dockable-right" draggable="true">
                 <div class="panel-header" title="8 LEDs controlled by writing to port 2.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar LED Output">⠿</span><span>LED Output (Port 2)</span></span>
-                    <span class="header-actions"><button id="btn-toggle-led" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar LED Output" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag LED Output">⠿</span><span>LED Output (Port 2)</span></span>
+                    <span class="header-actions"><button id="btn-toggle-led" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize LED Output" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body" id="led-body">
                     <div class="led-row">
@@ -307,8 +320,8 @@
 
             <div id="seven-seg-panel" class="panel adv dockable-right" draggable="true">
                 <div class="panel-header" title="7-segment display controlled by port 3.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar 7-Seg Display">⠿</span><span>7-Seg Display (Port 3)</span></span>
-                    <span class="header-actions"><button id="btn-toggle-sevenseg" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar 7-Seg Display" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag 7-Seg Display">⠿</span><span>7-Seg Display (Port 3)</span></span>
+                    <span class="header-actions"><button id="btn-toggle-sevenseg" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize 7-Seg Display" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body" id="sevenseg-body">
                     <div class="seven-seg-display">
@@ -326,8 +339,8 @@
 
             <div id="pixel-panel" class="panel adv dockable-right" draggable="true">
                 <div class="panel-header" title="32x32 pixel display. Memory-mapped at E000h-E3FFh. Write color 0-7 to each byte. OUT 4 refreshes; the grid also updates while you Step or Run.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Pixel Display">⠿</span><span>Pixel Display (Port 4)</span></span>
-                    <span class="header-actions"><button id="btn-toggle-pixel" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Pixel Display" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag Pixel Display">⠿</span><span>Pixel Display (Port 4)</span></span>
+                    <span class="header-actions"><button id="btn-toggle-pixel" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Pixel Display" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body" id="pixel-body">
                     <div id="pixel-grid" class="pixel-grid"></div>
@@ -337,8 +350,8 @@
 
             <div id="io-panel" class="panel dockable-right" draggable="true">
                 <div class="panel-header" title="Set a hex value for input port 1. Your program reads it with 'in al, 1'.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar I/O Ports">⠿</span><span>I/O Ports</span></span>
-                    <span class="header-actions"><button id="btn-toggle-io" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar I/O Ports" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag I/O Ports">⠿</span><span>I/O Ports</span></span>
+                    <span class="header-actions"><button id="btn-toggle-io" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize I/O Ports" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body" id="io-body">
                     <div class="io-row">
@@ -351,8 +364,8 @@
 
             <div id="converter-panel" class="panel adv dockable-right" draggable="true">
                 <div class="panel-header" title="Convert between hex, decimal, and binary.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Number Converter">⠿</span><span>Number Converter</span></span>
-                    <span class="header-actions"><button id="btn-toggle-converter" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Number Converter" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag Number Converter">⠿</span><span>Number Converter</span></span>
+                    <span class="header-actions"><button id="btn-toggle-converter" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Number Converter" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body converter-body">
                     <div class="conv-row"><label>Hex:</label><input type="text" id="conv-hex" class="hex-input conv-input" maxlength="4" value="0"></div>
@@ -363,8 +376,8 @@
 
             <div id="keyboard-panel" class="panel adv dockable-right" draggable="true">
                 <div class="panel-header" title="Type characters here. Program reads with 'in al, 5'. Port 6 returns buffer length.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Keyboard">⠿</span><span>Keyboard (Port 5/6)</span></span>
-                    <span class="header-actions"><button id="btn-toggle-keyboard" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Keyboard" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag Keyboard">⠿</span><span>Keyboard (Port 5/6)</span></span>
+                    <span class="header-actions"><button id="btn-toggle-keyboard" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Keyboard" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body" id="keyboard-body">
                     <input type="text" id="keyboard-input" class="hex-input" style="width:100%" placeholder="Type here...">
@@ -374,8 +387,8 @@
 
             <div id="stack-panel" class="panel dockable-right" draggable="true">
                 <div class="panel-header" title="The stack stores temporary values.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Stack">⠿</span><span>Stack</span></span>
-                    <span class="header-actions"><button id="btn-toggle-stack" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Stack" aria-expanded="true">−</button></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag Stack">⠿</span><span>Stack</span></span>
+                    <span class="header-actions"><button id="btn-toggle-stack" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Stack" aria-expanded="true">−</button></span>
                 </div>
                 <div class="panel-body" id="stack-body">
                     <div id="stack-content"></div>
@@ -384,9 +397,9 @@
 
             <div id="challenge-panel" class="panel adv dockable-right" draggable="true">
                 <div class="panel-header" title="Guided coding challenges with auto-grading.">
-                    <span class="panel-title-group"><span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Challenges">⠿</span><span>Challenges</span></span>
+                    <span class="panel-title-group"><span class="drag-handle" title="Drag to reorder" aria-label="Drag Challenges">⠿</span><span>Challenges</span></span>
                     <span class="header-actions">
-                        <button id="btn-toggle-challenge" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Challenges" aria-expanded="true">−</button>
+                        <button id="btn-toggle-challenge" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Challenges" aria-expanded="true">−</button>
                         <button id="btn-check-challenge" class="small-btn" style="display:none;">Check</button>
                     </span>
                 </div>
@@ -400,14 +413,14 @@
 
         <div id="bottom-dock" class="layout-grid" aria-label="Painéis inferiores reorganizados">
             <div class="dock-toolbar" id="dock-toolbar" style="grid-column: 1 / -1;">
-                <span class="dock-toolbar-label">Organizar:</span>
-                <button id="btn-dock-stack" class="small-btn dock-layout-btn" title="Um embaixo do outro (empilhado)" aria-pressed="false">≡ Empilhado</button>
-                <button id="btn-dock-grid" class="small-btn dock-layout-btn active" title="Lado a lado quando houver espaço" aria-pressed="true">⊞ Lado a lado</button>
+                <span class="dock-toolbar-label">Arrange:</span>
+                <button id="btn-dock-stack" class="small-btn dock-layout-btn" title="Stacked (one below the other)" aria-pressed="false">≡ Stacked</button>
+                <button id="btn-dock-grid" class="small-btn dock-layout-btn active" title="Side by side when space allows" aria-pressed="true">⊞ Side by side</button>
             </div>
             <section id="memory-panel" class="panel dockable" draggable="true">
                 <div class="panel-header" title="View raw memory contents as hex bytes.">
                     <span class="panel-title-group">
-                        <span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Memory Viewer">⠿</span>
+                        <span class="drag-handle" title="Drag to reorder" aria-label="Drag Memory Viewer">⠿</span>
                         <span>Memory Viewer</span>
                     </span>
                     <div class="header-actions">
@@ -422,7 +435,7 @@
                                 <option value="cs">CS (Code)</option>
                             </select>
                         </div>
-                        <button id="btn-toggle-memory" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Memory Viewer" aria-expanded="true">−</button>
+                        <button id="btn-toggle-memory" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Memory Viewer" aria-expanded="true">−</button>
                     </div>
                 </div>
                 <div class="panel-body" id="memory-body">
@@ -434,12 +447,12 @@
             <section id="trace-panel" class="panel adv dockable" draggable="true">
                 <div class="panel-header" title="Execution trace showing each instruction and register state.">
                     <span class="panel-title-group">
-                        <span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Trace Log">⠿</span>
+                        <span class="drag-handle" title="Drag to reorder" aria-label="Drag Trace Log">⠿</span>
                         <span>Trace Log</span>
                     </span>
                     <span class="header-actions">
                         <button id="btn-clear-trace" class="small-btn">Clear</button>
-                        <button id="btn-toggle-trace" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Trace Log" aria-expanded="true">−</button>
+                        <button id="btn-toggle-trace" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Trace Log" aria-expanded="true">−</button>
                     </span>
                 </div>
                 <div class="panel-body" id="trace-body">
@@ -453,12 +466,12 @@
             <section id="console-panel" class="panel dockable" draggable="true">
                 <div class="panel-header" title="Shows assembly results, errors, and execution messages.">
                     <span class="panel-title-group">
-                        <span class="drag-handle" title="Arrastar para reorganizar" aria-label="Arrastar Output Console">⠿</span>
+                        <span class="drag-handle" title="Drag to reorder" aria-label="Drag Output Console">⠿</span>
                         <span>Output Console</span>
                     </span>
                     <span class="header-actions">
                         <button id="btn-clear-console" class="small-btn">Clear</button>
-                        <button id="btn-toggle-console" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Output Console" aria-expanded="true">−</button>
+                        <button id="btn-toggle-console" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Output Console" aria-expanded="true">−</button>
                     </span>
                 </div>
                 <div class="panel-body" id="console-body">

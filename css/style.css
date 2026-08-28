@@ -338,6 +338,33 @@ select:focus, button:focus, input:focus, textarea:focus {
     background: #1a1b26;
 }
 
+.editor-zoom-controls {
+    gap: 4px;
+}
+
+.editor-zoom-controls .small-btn {
+    width: 22px;
+    padding: 2px 0;
+    font-size: 12px;
+    line-height: 1;
+}
+
+#zoom-slider,
+#zoom-slider-vt100 {
+    width: 70px;
+    height: 4px;
+    accent-color: var(--accent-blue);
+    cursor: pointer;
+}
+
+.zoom-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    min-width: 32px;
+    text-align: right;
+    font-family: 'Cascadia Code', monospace;
+}
+
 /* ---- PANELS ---- */
 .panel {
     background: var(--bg-primary);

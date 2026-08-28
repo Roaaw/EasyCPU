@@ -15,6 +15,8 @@ const UI = (() => {
         bindEvents();
         initDock();
         initEditorResizer();
+        initEditorZoom();
+        initVt100Zoom();
         updateLineNumbers();
         updateRegisters();
         updateFlags();
@@ -654,12 +656,12 @@ const UI = (() => {
         const label = labelMap[panelId] || panelId;
         if (collapsed) {
             btn.textContent = '☐';
-            btn.title = 'Maximizar';
-            btn.setAttribute('aria-label', 'Maximizar ' + label);
+            btn.title = 'Maximize';
+            btn.setAttribute('aria-label', 'Maximize ' + label);
         } else {
             btn.textContent = '−';
-            btn.title = 'Minimizar';
-            btn.setAttribute('aria-label', 'Minimizar ' + label);
+            btn.title = 'Minimize';
+            btn.setAttribute('aria-label', 'Minimize ' + label);
         }
     }
 
@@ -840,6 +842,35 @@ const UI = (() => {
             btnGrid.setAttribute('aria-pressed', String(layout === 'grid'));
         }
         try { localStorage.setItem(DOCK_LAYOUT_KEY, layout); } catch (_) {}
+        // fix overlap code/vt100 when switching dock layout (editor height changes)
+        requestAnimationFrame(() => clampEditorHeights());
+    }
+
+    function clampEditorHeights() {
+        const editorPanel = document.getElementById('editor-panel');
+        const editorContainer = document.getElementById('editor-container');
+        const terminalPanel = document.getElementById('terminal-panel');
+        const resizer = document.getElementById('editor-vt100-resizer');
+        if (!editorPanel || !editorContainer || !terminalPanel || !resizer) return;
+        const headerH = editorPanel.querySelector('.panel-header')?.offsetHeight || 28;
+        const avail = editorPanel.clientHeight - headerH - resizer.offsetHeight;
+        if (avail <= 80) return;
+        const total = editorContainer.offsetHeight + terminalPanel.offsetHeight;
+        if (total > avail + 2) {
+            // rescale proportionally to fit, keep VT100 at least 80px
+            const ratio = terminalPanel.offsetHeight / total;
+            let newTermH = Math.round(avail * ratio);
+            let newEditH = avail - newTermH;
+            const minH = 80;
+            if (newTermH < minH) { newTermH = minH; newEditH = avail - minH; }
+            if (newEditH < minH) { newEditH = minH; newTermH = avail - minH; }
+            editorContainer.style.flex = `0 0 ${newEditH}px`;
+            editorContainer.style.height = '';
+            terminalPanel.style.flex = `1 1 ${newTermH}px`;
+            terminalPanel.style.height = '';
+            terminalPanel.style.minHeight = newTermH + 'px';
+            try { localStorage.setItem('easycpu:editor-vt100-ratio', String(newTermH / avail)); } catch (_) {}
+        }
     }
 
     function initDockLayout() {
@@ -1087,6 +1118,140 @@ const UI = (() => {
             terminalPanel.style.minHeight = '';
             terminalPanel.style.flex = '';
             try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+        });
+    }
+
+    function initEditorZoom() {
+        const editor = document.getElementById('code-editor');
+        const lineNums = document.getElementById('line-numbers');
+        const overlay = document.getElementById('highlight-overlay');
+        const slider = document.getElementById('zoom-slider');
+        const btnIn = document.getElementById('btn-zoom-in');
+        const btnOut = document.getElementById('btn-zoom-out');
+        const label = document.getElementById('zoom-label');
+        if (!editor || !slider) return;
+        const STORAGE_KEY = 'easycpu:editor-zoom';
+        const baseSize = 13;
+        const step = 5;
+
+        function applyZoom(percent) {
+            const size = (baseSize * percent / 100);
+            const lineH = 1.6;
+            [editor, lineNums, overlay].forEach(el => {
+                if (!el) return;
+                el.style.fontSize = size + 'px';
+                el.style.lineHeight = String(lineH);
+            });
+            if (label) label.textContent = percent + '%';
+            if (slider) slider.value = String(percent);
+            try { localStorage.setItem(STORAGE_KEY, String(percent)); } catch (_) {}
+        }
+
+        let current = 100;
+        try {
+            const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '100', 10);
+            if (!isNaN(saved) && saved >= 80 && saved <= 300) current = saved;
+        } catch (_) {}
+        applyZoom(current);
+
+        if (slider) {
+            slider.addEventListener('input', () => {
+                current = parseInt(slider.value, 10);
+                applyZoom(current);
+            });
+        }
+        if (btnIn) btnIn.addEventListener('click', () => {
+            current = Math.min(300, current + step);
+            applyZoom(current);
+        });
+        if (btnOut) btnOut.addEventListener('click', () => {
+            current = Math.max(80, current - step);
+            applyZoom(current);
+        });
+        // atalhos Ctrl + / Ctrl -
+        editor.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
+                e.preventDefault();
+                current = Math.min(300, current + step);
+                applyZoom(current);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+                e.preventDefault();
+                current = Math.max(80, current - step);
+                applyZoom(current);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+                e.preventDefault();
+                current = 100;
+                applyZoom(current);
+            }
+        });
+    }
+
+    function initVt100Zoom() {
+        const screen = document.getElementById('vt100-screen');
+        const slider = document.getElementById('zoom-slider-vt100');
+        const btnIn = document.getElementById('btn-zoom-in-vt100');
+        const btnOut = document.getElementById('btn-zoom-out-vt100');
+        const label = document.getElementById('zoom-label-vt100');
+        if (!screen || !slider) return;
+        const STORAGE_KEY = 'easycpu:vt100-zoom';
+        const baseSize = 11;
+        const baseLine = 13;
+        const step = 5;
+
+        function applyZoom(percent) {
+            const size = (baseSize * percent / 100);
+            const lh = (baseLine * percent / 100);
+            screen.style.fontSize = size + 'px';
+            screen.style.lineHeight = lh + 'px';
+            // ajusta altura da linha VT100 para cursor
+            const style = document.getElementById('vt100-zoom-style');
+            if (style) style.remove();
+            const s = document.createElement('style');
+            s.id = 'vt100-zoom-style';
+            s.textContent = `.vt100-row{height:${lh}px !important}`;
+            document.head.appendChild(s);
+            if (label) label.textContent = percent + '%';
+            if (slider) slider.value = String(percent);
+            try { localStorage.setItem(STORAGE_KEY, String(percent)); } catch (_) {}
+        }
+
+        let current = 100;
+        try {
+            const saved = parseInt(localStorage.getItem(STORAGE_KEY) || '100', 10);
+            if (!isNaN(saved) && saved >= 80 && saved <= 300) current = saved;
+        } catch (_) {}
+        applyZoom(current);
+
+        slider.addEventListener('input', () => {
+            current = parseInt(slider.value, 10);
+            applyZoom(current);
+        });
+        if (btnIn) btnIn.addEventListener('click', () => {
+            current = Math.min(300, current + step);
+            applyZoom(current);
+        });
+        if (btnOut) btnOut.addEventListener('click', () => {
+            current = Math.max(80, current - step);
+            applyZoom(current);
+        });
+        screen.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
+                e.preventDefault();
+                current = Math.min(300, current + step);
+                applyZoom(current);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+                e.preventDefault();
+                current = Math.max(80, current - step);
+                applyZoom(current);
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === '0') {
+                e.preventDefault();
+                current = 100;
+                applyZoom(current);
+            }
         });
     }
 
