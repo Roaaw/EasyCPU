@@ -20,6 +20,20 @@ const Debugger = (() => {
             const lineNum = idx + 1;
             toggleBreakpoint(lineNum, div);
         });
+        // VSCode-like F9 to toggle breakpoint on current editor line
+        const editor = document.getElementById('code-editor');
+        if (editor) {
+            editor.addEventListener('keydown', (e) => {
+                if (e.key === 'F9') {
+                    e.preventDefault();
+                    if (!Mode.isAdvanced()) return;
+                    const pos = editor.selectionStart;
+                    const lineNum = editor.value.substring(0, pos).split('\n').length;
+                    const div = gutter.children[lineNum - 1];
+                    toggleBreakpoint(lineNum, div || null);
+                }
+            });
+        }
     }
 
     function toggleBreakpoint(lineNum, el) {

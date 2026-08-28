@@ -7,6 +7,7 @@ const UI = (() => {
     let runTimer = null;
     let assembled = null;
     let prevRegs = {};
+    let currentHighlightLine = 0;
 
     const editor = () => $('#code-editor');
     const lineNums = () => $('#line-numbers');
@@ -123,6 +124,20 @@ const UI = (() => {
                 e.preventDefault();
                 doAssemble();
             }
+            if (e.key === 'F10') {
+                e.preventDefault();
+                if (!$('#btn-step').disabled) doStep();
+            }
+        });
+        // F10 global (VSCode Step Over) - works even when VT100 or other panel focused
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F10' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                const ae = document.activeElement;
+                // evita duplo disparo quando editor já tratou
+                if (ae && ae.id === 'code-editor') return;
+                e.preventDefault();
+                if (!$('#btn-step').disabled) doStep();
+            }
         });
 
         $('#sample-select').addEventListener('change', (e) => {
@@ -165,16 +180,70 @@ const UI = (() => {
             overlay.scrollTop = editor().scrollTop;
             overlay.scrollLeft = editor().scrollLeft;
         }
+        if (currentHighlightLine) updateEditorLineHighlight(currentHighlightLine);
     }
 
     function highlightCurrentLine(lineNum) {
+        currentHighlightLine = lineNum || 0;
         $$('#line-numbers div').forEach((div, idx) => {
             div.classList.toggle('current-line', idx + 1 === lineNum);
         });
+        updateEditorLineHighlight(lineNum);
+        if (lineNum > 0) scrollEditorToLine(lineNum);
+    }
+
+    function updateEditorLineHighlight(lineNum) {
+        const hl = document.getElementById('editor-line-highlight');
+        const ed = editor();
+        if (!hl || !ed) return;
+        if (!lineNum || lineNum < 1) {
+            hl.classList.remove('visible');
+            return;
+        }
+        const style = getComputedStyle(ed);
+        let lh = parseFloat(style.lineHeight);
+        if (isNaN(lh)) {
+            const fs = parseFloat(style.fontSize) || 13;
+            lh = fs * 1.6;
+        }
+        const padTop = parseFloat(style.paddingTop) || 10;
+        hl.style.height = lh + 'px';
+        hl.style.top = (padTop + (lineNum - 1) * lh - ed.scrollTop) + 'px';
+        hl.classList.add('visible');
+    }
+
+    function scrollEditorToLine(lineNum) {
+        const ed = editor();
+        const gutter = lineNums();
+        if (!ed || !gutter || lineNum < 1) return;
+        // calcula altura da linha a partir do estilo computado
+        const style = getComputedStyle(ed);
+        let lh = parseFloat(style.lineHeight);
+        if (isNaN(lh)) {
+            const fs = parseFloat(style.fontSize) || 13;
+            lh = fs * 1.6;
+        }
+        const targetTop = (lineNum - 1) * lh;
+        const viewH = ed.clientHeight;
+        const curTop = ed.scrollTop;
+        // só rola se a linha estiver fora da viewport (com margem de 1 linha)
+        if (targetTop < curTop + lh || targetTop + lh > curTop + viewH - lh) {
+            const newTop = Math.max(0, targetTop - viewH / 2 + lh / 2);
+            ed.scrollTop = newTop;
+            gutter.scrollTop = newTop;
+            const overlay = document.getElementById('highlight-overlay');
+            if (overlay) {
+                overlay.scrollTop = newTop;
+                overlay.scrollLeft = ed.scrollLeft;
+            }
+        }
     }
 
     function clearLineHighlight() {
+        currentHighlightLine = 0;
         $$('#line-numbers div').forEach(div => div.classList.remove('current-line'));
+        const hl = document.getElementById('editor-line-highlight');
+        if (hl) hl.classList.remove('visible');
     }
 
     function doAssemble() {

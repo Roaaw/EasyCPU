@@ -186,7 +186,7 @@
         <div class="toolbar-center">
             <button id="btn-assemble" title="Assemble (Ctrl+Enter)">Assemble</button>
             <button id="btn-run" title="Run program" disabled>Run</button>
-            <button id="btn-step" title="Step one instruction" disabled>Step</button>
+            <button id="btn-step" title="Step one instruction (F10)" disabled>Step</button>
             <button id="btn-step-back" class="adv" title="Step backward (undo last instruction)" disabled>Step Back</button>
             <button id="btn-run-bp" class="adv" title="Run until next breakpoint" disabled>Run to BP</button>
             <button id="btn-stop" title="Stop execution" disabled>Stop</button>
@@ -232,6 +232,7 @@
                 </span>
             </div>
             <div id="editor-container">
+                <div id="editor-line-highlight"></div>
                 <div id="line-numbers"></div>
                 <textarea id="code-editor" spellcheck="false" wrap="off"
                     placeholder="Write your 8086 assembly code here..."></textarea>

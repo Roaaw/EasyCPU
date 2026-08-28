@@ -404,6 +404,27 @@ select:focus, button:focus, input:focus, textarea:focus {
     overflow: hidden;
 }
 
+#editor-line-highlight {
+    position: absolute;
+    left: 44px;
+    right: 0;
+    height: 1.6em;
+    background: var(--highlight-line);
+    pointer-events: none;
+    z-index: 0;
+    display: none;
+}
+
+#editor-line-highlight.visible {
+    display: block;
+}
+
+@media (max-width: 480px) {
+    #editor-line-highlight {
+        left: 32px;
+    }
+}
+
 #line-numbers {
     width: 44px;
     padding: 10px 6px 10px 0;
