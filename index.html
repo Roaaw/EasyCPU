@@ -373,17 +373,21 @@
         </section>
 
         <section id="memory-panel">
-            <div class="panel-header" title="View raw memory contents as hex bytes.">Memory Viewer
-                <div class="memory-controls">
-                    <label for="mem-addr">Go to:</label>
-                    <input type="text" id="mem-addr" value="0000" maxlength="4" class="hex-input">
-                    <button id="btn-mem-go">Go</button>
-                    <label for="mem-segment">Segment:</label>
-                    <select id="mem-segment">
-                        <option value="ds">DS (Data)</option>
-                        <option value="ss">SS (Stack)</option>
-                        <option value="cs">CS (Code)</option>
-                    </select>
+            <div class="panel-header" title="View raw memory contents as hex bytes.">
+                <span>Memory Viewer</span>
+                <div class="header-actions">
+                    <div class="memory-controls">
+                        <label for="mem-addr">Go to:</label>
+                        <input type="text" id="mem-addr" value="0000" maxlength="4" class="hex-input">
+                        <button id="btn-mem-go">Go</button>
+                        <label for="mem-segment">Segment:</label>
+                        <select id="mem-segment">
+                            <option value="ds">DS (Data)</option>
+                            <option value="ss">SS (Stack)</option>
+                            <option value="cs">CS (Code)</option>
+                        </select>
+                    </div>
+                    <button id="btn-toggle-memory" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Memory Viewer" aria-expanded="true">−</button>
                 </div>
             </div>
             <div class="panel-body" id="memory-body">
@@ -393,8 +397,12 @@
         </section>
 
         <section id="trace-panel" class="adv">
-            <div class="panel-header" title="Execution trace showing each instruction and register state.">Trace Log
-                <button id="btn-clear-trace" class="small-btn">Clear</button>
+            <div class="panel-header" title="Execution trace showing each instruction and register state.">
+                <span>Trace Log</span>
+                <span class="header-actions">
+                    <button id="btn-clear-trace" class="small-btn">Clear</button>
+                    <button id="btn-toggle-trace" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Trace Log" aria-expanded="true">−</button>
+                </span>
             </div>
             <div class="panel-body" id="trace-body">
                 <table class="trace-table">
@@ -405,8 +413,12 @@
         </section>
 
         <section id="console-panel">
-            <div class="panel-header" title="Shows assembly results, errors, and execution messages.">Output Console
-                <button id="btn-clear-console" class="small-btn">Clear</button>
+            <div class="panel-header" title="Shows assembly results, errors, and execution messages.">
+                <span>Output Console</span>
+                <span class="header-actions">
+                    <button id="btn-clear-console" class="small-btn">Clear</button>
+                    <button id="btn-toggle-console" class="small-btn collapse-btn" title="Minimizar" aria-label="Minimizar Output Console" aria-expanded="true">−</button>
+                </span>
             </div>
             <div class="panel-body" id="console-body">
                 <div id="console-output"></div>

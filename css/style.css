@@ -623,7 +623,37 @@ select:focus, button:focus, input:focus, textarea:focus {
     color: var(--accent-cyan);
 }
 
+/* ---- COLLAPSIBLE PANELS (Console / Memory / Trace) ---- */
+.header-actions,
+.console-header-actions,
+.vt100-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.collapse-btn {
+    width: 22px;
+    padding: 2px 0;
+    font-size: 12px;
+    line-height: 1;
+    text-align: center;
+}
+
+#console-panel.collapsed #console-body,
+#memory-panel.collapsed #memory-body,
+#trace-panel.collapsed #trace-body {
+    display: none;
+}
+
+#console-panel.collapsed,
+#memory-panel.collapsed,
+#trace-panel.collapsed {
+    max-height: none;
+}
+
 /* ---- CONSOLE ---- */
+
 #console-body {
     max-height: 120px;
     overflow-y: auto;

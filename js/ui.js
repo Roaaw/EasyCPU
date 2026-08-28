@@ -61,6 +61,18 @@ const UI = (() => {
         $('#btn-clear-console').addEventListener('click', () => {
             $('#console-output').innerHTML = '';
         });
+        const btnToggleConsole = $('#btn-toggle-console');
+        if (btnToggleConsole) {
+            btnToggleConsole.addEventListener('click', () => togglePanel('console-panel', 'btn-toggle-console'));
+        }
+        const btnToggleMemory = $('#btn-toggle-memory');
+        if (btnToggleMemory) {
+            btnToggleMemory.addEventListener('click', () => togglePanel('memory-panel', 'btn-toggle-memory'));
+        }
+        const btnToggleTrace = $('#btn-toggle-trace');
+        if (btnToggleTrace) {
+            btnToggleTrace.addEventListener('click', () => togglePanel('trace-panel', 'btn-toggle-trace'));
+        }
         $('#btn-mem-go').addEventListener('click', () => updateMemory());
         $('#mem-addr').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') updateMemory();
@@ -601,6 +613,29 @@ const UI = (() => {
                 '</div>';
         }
         container.innerHTML = html;
+    }
+
+    function togglePanel(panelId, btnId) {
+        const panel = document.getElementById(panelId);
+        const btn = document.getElementById(btnId);
+        if (!panel || !btn) return;
+        const collapsed = panel.classList.toggle('collapsed');
+        const isExpanded = !collapsed;
+        btn.setAttribute('aria-expanded', String(isExpanded));
+        const label = panelId === 'console-panel' ? 'Output Console' : panelId === 'memory-panel' ? 'Memory Viewer' : 'Trace Log';
+        if (collapsed) {
+            btn.textContent = '☐';
+            btn.title = 'Maximizar';
+            btn.setAttribute('aria-label', 'Maximizar ' + label);
+        } else {
+            btn.textContent = '−';
+            btn.title = 'Minimizar';
+            btn.setAttribute('aria-label', 'Minimizar ' + label);
+        }
+    }
+
+    function toggleConsole() {
+        togglePanel('console-panel', 'btn-toggle-console');
     }
 
     function logConsole(msg, type) {
