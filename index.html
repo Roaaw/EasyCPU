@@ -244,13 +244,13 @@
                 <div class="panel-header" title="VT100 text terminal. Write bytes with OUT 8, AL or INT 21h AH=02h/09h. Click the screen and type; the program reads keys with IN AL, 8 or INT 21h AH=01h. Port 9 bit 0 = key waiting.">
                     <span>VT100 Terminal (Port 8)</span>
                     <span class="header-actions vt100-header-actions">
+                        <span id="vt100-status" class="vt100-status"></span>
                         <span class="editor-zoom-controls header-actions" style="gap:4px">
                             <button id="btn-zoom-out-vt100" class="small-btn" title="Decrease VT100 zoom">−</button>
                             <input type="range" id="zoom-slider-vt100" min="80" max="300" value="100" title="Zoom VT100">
                             <button id="btn-zoom-in-vt100" class="small-btn" title="Increase VT100 zoom">+</button>
                             <span id="zoom-label-vt100" class="zoom-label">100%</span>
                         </span>
-                        <span id="vt100-status" class="vt100-status"></span>
                         <button id="btn-clear-terminal" class="small-btn" type="button">Clear</button>
                     </span>
                 </div>
