@@ -152,6 +152,8 @@ button:active:not(:disabled) {
     align-items: center;
     gap: 6px;
     margin-left: 8px;
+    position: relative;
+    flex-wrap: wrap;
 }
 
 .speed-control label {
@@ -162,6 +164,56 @@ button:active:not(:disabled) {
 #speed-slider {
     width: 80px;
     accent-color: var(--accent-blue);
+}
+
+.speed-value {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-cyan);
+    min-width: 22px;
+    text-align: right;
+    font-family: 'Cascadia Code', monospace;
+}
+
+.speed-mode {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 3px;
+    min-width: 48px;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.speed-mode.slow { background: rgba(158,206,106,0.15); color: var(--accent-green); }
+.speed-mode.normal { background: rgba(122,162,247,0.15); color: var(--accent-blue); }
+.speed-mode.fast { background: rgba(224,175,104,0.15); color: var(--accent-yellow); }
+.speed-mode.turbo { background: rgba(247,118,142,0.15); color: var(--accent-red); animation: speedPulse 1s infinite; }
+
+@keyframes speedPulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.speed-track {
+    position: absolute;
+    bottom: -4px;
+    left: 46px;
+    width: 80px;
+    height: 3px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.speed-fill {
+    height: 100%;
+    width: 50%;
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-blue) 50%, var(--accent-yellow) 75%, var(--accent-red));
+    border-radius: 2px;
+    transition: width 0.15s;
 }
 
 select {
@@ -821,6 +873,8 @@ select:focus, button:focus, input:focus, textarea:focus {
 
 .dockable.dragging {
     opacity: 0.45;
+    will-change: transform, opacity;
+    contain: layout;
 }
 
 .dockable.drag-over,

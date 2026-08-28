@@ -4,8 +4,8 @@ const Debugger = (() => {
     const breakpoints = new Set();
     const history = [];
     const traceLog = [];
-    const MAX_HISTORY = 1000;
-    const MAX_TRACE = 5000;
+    const MAX_HISTORY = 200;
+    const MAX_TRACE = 1000;
 
     // ---- Breakpoints ----
 
@@ -91,6 +91,34 @@ const Debugger = (() => {
 
     // ---- Trace Log ----
 
+    let pendingTrace = [];
+    let traceRaf = null;
+    function flushTrace() {
+        const tbody = document.getElementById('trace-tbody');
+        if (!tbody || pendingTrace.length === 0) { traceRaf = null; return; }
+        const frag = document.createDocumentFragment();
+        const hex4 = v => (v & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+        for (const entry of pendingTrace) {
+            const tr = document.createElement('tr');
+            tr.dataset.line = entry.line;
+            tr.innerHTML =
+                '<td>' + entry.step + '</td>' +
+                '<td>' + hex4(entry.ip) + '</td>' +
+                '<td>' + entry.mnemonic + '</td>' +
+                '<td>' + hex4(entry.ax) + '</td>' +
+                '<td>' + hex4(entry.bx) + '</td>' +
+                '<td>' + hex4(entry.cx) + '</td>' +
+                '<td>' + hex4(entry.dx) + '</td>' +
+                '<td>' + entry.flags + '</td>';
+            frag.appendChild(tr);
+        }
+        tbody.appendChild(frag);
+        pendingTrace = [];
+        const container = document.getElementById('trace-body');
+        if (container) container.scrollTop = container.scrollHeight;
+        traceRaf = null;
+    }
+
     function recordTrace(result) {
         if (!Mode.isAdvanced()) return;
         const state = CPU.getState();
@@ -107,7 +135,8 @@ const Debugger = (() => {
         };
         traceLog.push(entry);
         if (traceLog.length > MAX_TRACE) traceLog.shift();
-        appendTraceRow(entry);
+        pendingTrace.push(entry);
+        if (!traceRaf) traceRaf = requestAnimationFrame(flushTrace);
     }
 
     function flagsString(f) {
@@ -143,6 +172,8 @@ const Debugger = (() => {
 
     function clearTrace() {
         traceLog.length = 0;
+        pendingTrace = [];
+        if (traceRaf) { cancelAnimationFrame(traceRaf); traceRaf = null; }
         const tbody = document.getElementById('trace-tbody');
         if (tbody) tbody.innerHTML = '';
     }

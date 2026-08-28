@@ -17,6 +17,8 @@ const CPU = (() => {
     let onConsoleReady = null;
     let audioCtx = null;
     let directionFlag = 0;
+    let memDirty = false;
+    let dirtyAddrs = new Map();
 
     function init() {
         regs = {
@@ -31,6 +33,8 @@ const CPU = (() => {
         halted = false;
         stepCount = 0;
         directionFlag = 0;
+        memDirty = false;
+        dirtyAddrs.clear();
     }
 
     function loadProgram(assembled) {
@@ -44,6 +48,109 @@ const CPU = (() => {
             let physAddr = (regs.ds + parseInt(addr)) & 0xFFFF;
             memory[physAddr] = assembled.dataBytes[addr];
         }
+        // Code segment at CS:0 (8086-like)
+        const { codeBytes, codeOffsets, offsetToIndex } = encodeCodeBytes(assembled.instructions);
+        assembled.codeBytes = codeBytes;
+        assembled.codeOffsets = codeOffsets;
+        assembled.offsetToIndex = offsetToIndex;
+        assembled.codeLength = codeBytes.length;
+        for (let i = 0; i < codeBytes.length; i++) {
+            let physAddr = (regs.cs + i) & 0xFFFF;
+            if (physAddr >= regs.ds && physAddr < regs.ds + 0x1000) continue;
+            memory[physAddr] = codeBytes[i];
+        }
+        memDirty = false;
+        dirtyAddrs.clear();
+    }
+
+    function encodeCodeBytes(instructions) {
+        if (!instructions || !instructions.length) return { codeBytes: [], codeOffsets: [], offsetToIndex: {} };
+        const REG8_INTEL = { al:0, cl:1, dl:2, bl:3, ah:4, ch:5, dh:6, bh:7 };
+        const REG16_INTEL = { ax:0, cx:1, dx:2, bx:3, sp:4, bp:5, si:6, di:7 };
+        const REG_CODE = { al:0, ah:1, bl:2, bh:3, cl:4, ch:5, dl:6, dh:7, ax:8, bx:9, cx:10, dx:11, sp:12, bp:13, si:14, di:15, ip:16, ds:17, ss:18, cs:19, es:20 };
+        function isMovRegImm(instr) {
+            return instr.mnemonic === 'mov' && instr.operands && instr.operands[0]?.type === 'register' && instr.operands[1]?.type === 'immediate';
+        }
+        function instrByteLen(instr) {
+            if (isMovRegImm(instr)) {
+                const r = instr.operands[0].reg;
+                const is8 = REG8_INTEL[r] !== undefined;
+                return 1 + (is8 ? 1 : 2);
+            }
+            let len = 1;
+            for (let o of instr.operands || []) {
+                if (!o) continue;
+                if (o.type === 'register') len += 1;
+                else if (o.type === 'immediate') len += (o.size === 16 ? 2 : 1);
+                else if (o.type === 'memory_direct') len += 2;
+                else if (o.type === 'memory_reg') len += 1;
+                else if (o.type === 'memory_reg_disp' || o.type === 'memory_reg2_disp') len += 3;
+                else if (o.type === 'memory_reg2') len += 1;
+                else if (o.type === 'label') len += 2;
+                else if (o.type === 'unknown') len += 1;
+            }
+            return len;
+        }
+        const codeOffsets = [];
+        const offsetToIndex = {};
+        let off = 0;
+        for (let i = 0; i < instructions.length; i++) {
+            codeOffsets.push(off);
+            offsetToIndex[off] = i;
+            off += instrByteLen(instructions[i]);
+        }
+        const bytes = [];
+        for (let i = 0; i < instructions.length; i++) {
+            const instr = instructions[i];
+            if (isMovRegImm(instr)) {
+                const r = instr.operands[0].reg;
+                const imm = instr.operands[1].value;
+                if (REG8_INTEL[r] !== undefined) {
+                    bytes.push(0xB0 + REG8_INTEL[r]);
+                    bytes.push(imm & 0xFF);
+                } else if (REG16_INTEL[r] !== undefined) {
+                    bytes.push(0xB8 + REG16_INTEL[r]);
+                    bytes.push(imm & 0xFF);
+                    bytes.push((imm >> 8) & 0xFF);
+                } else {
+                    let op = 0;
+                    for (let k = 0; k < instr.mnemonic.length; k++) op = (op * 31 + instr.mnemonic.charCodeAt(k)) & 0xFF;
+                    if (op === 0) op = 0x90;
+                    bytes.push(op);
+                    bytes.push(REG_CODE[r] ?? 0xFF);
+                    bytes.push(imm & 0xFF);
+                    if (instr.operands[1].size === 16) bytes.push((imm >> 8) & 0xFF);
+                }
+                continue;
+            }
+            let op = 0;
+            for (let k = 0; k < instr.mnemonic.length; k++) op = (op * 31 + instr.mnemonic.charCodeAt(k)) & 0xFF;
+            if (op === 0) op = 0x90;
+            bytes.push(op);
+            for (let o of instr.operands || []) {
+                if (!o) continue;
+                if (o.type === 'register') bytes.push(REG_CODE[o.reg] ?? 0xFF);
+                else if (o.type === 'immediate') { bytes.push(o.value & 0xFF); if (o.size === 16) bytes.push((o.value >> 8) & 0xFF); }
+                else if (o.type === 'memory_direct') { bytes.push(o.address & 0xFF); bytes.push((o.address >> 8) & 0xFF); }
+                else if (o.type === 'memory_reg' || o.type === 'memory_reg_disp' || o.type === 'memory_reg2' || o.type === 'memory_reg2_disp') { bytes.push(REG_CODE[o.reg] ?? 0); if (o.disp !== undefined) { bytes.push(o.disp & 0xFF); bytes.push((o.disp >> 8) & 0xFF); } }
+                else if (o.type === 'label') { const targetOffset = codeOffsets[o.address] ?? 0; bytes.push(targetOffset & 0xFF); bytes.push((targetOffset >> 8) & 0xFF); }
+                else if (o.type === 'unknown') bytes.push(0xCC);
+            }
+        }
+        return { codeBytes: bytes, codeOffsets, offsetToIndex };
+    }
+
+    function ipToIndex(ip) {
+        if (!program || !program.offsetToIndex) return -1;
+        if (program.offsetToIndex[ip] !== undefined) return program.offsetToIndex[ip];
+        return -1;
+    }
+
+    function nextIpOffset(curIdx) {
+        if (!program || !program.codeOffsets) return regs.ip + 1;
+        const nextIdx = curIdx + 1;
+        if (nextIdx < program.codeOffsets.length) return program.codeOffsets[nextIdx];
+        return program.codeLength || regs.ip + 1;
     }
 
     function reset() {
@@ -186,11 +293,23 @@ const CPU = (() => {
     function writeMem(op, val) {
         let addr = effectiveAddress(op);
         if (op.size === 16) {
+            if (!dirtyAddrs.has(addr)) dirtyAddrs.set(addr, memory[addr]);
+            if (!dirtyAddrs.has((addr+1)&0xFFFF)) dirtyAddrs.set((addr+1)&0xFFFF, memory[(addr+1)&0xFFFF]);
             memory[addr] = val & 0xFF;
             memory[(addr + 1) & 0xFFFF] = (val >> 8) & 0xFF;
+            memDirty = true;
         } else {
+            if (!dirtyAddrs.has(addr)) dirtyAddrs.set(addr, memory[addr]);
             memory[addr] = val & 0xFF;
+            memDirty = true;
         }
+    }
+
+    function writeMemByte(addr, val) {
+        addr &= 0xFFFF;
+        if (!dirtyAddrs.has(addr)) dirtyAddrs.set(addr, memory[addr]);
+        memory[addr] = val & 0xFF;
+        memDirty = true;
     }
 
     function getValue(op) {
@@ -302,8 +421,8 @@ const CPU = (() => {
     function pushStack(val) {
         regs.sp = (regs.sp - 2) & 0xFFFF;
         let addr = (regs.ss + regs.sp) & 0xFFFF;
-        memory[addr] = val & 0xFF;
-        memory[(addr + 1) & 0xFFFF] = (val >> 8) & 0xFF;
+        writeMemByte(addr, val & 0xFF);
+        writeMemByte((addr + 1) & 0xFFFF, (val >> 8) & 0xFF);
     }
 
     function popStack() {
@@ -353,7 +472,7 @@ const CPU = (() => {
             case 'movsb': {
                 let srcAddr = physAddr(regs.ds, regs.si);
                 let dstAddr = physAddr(regs.es, regs.di);
-                memory[dstAddr] = memory[srcAddr];
+                writeMemByte(dstAddr, memory[srcAddr]);
                 regs.si = (regs.si + delta) & 0xFFFF;
                 regs.di = (regs.di + delta) & 0xFFFF;
                 break;
@@ -366,7 +485,7 @@ const CPU = (() => {
             }
             case 'stosb': {
                 let dstAddr = physAddr(regs.es, regs.di);
-                memory[dstAddr] = getReg8('al');
+                writeMemByte(dstAddr, getReg8('al'));
                 regs.di = (regs.di + delta) & 0xFFFF;
                 break;
             }
@@ -1169,6 +1288,9 @@ const CPU = (() => {
         return entries;
     }
 
+    function isMemDirty(){ return memDirty; }
+    function clearMemDirty(){ memDirty=false; dirtyAddrs.clear(); }
+
     init();
 
     return {
@@ -1177,6 +1299,7 @@ const CPU = (() => {
         setInputPort, setOnPortWrite, setOnPortRead, setOnHalt, setOnConsole, setMaxSteps,
         getStackEntries, getReg8, getReg16, setReg8, setReg16,
         pushStack, popStack, portRead, portWrite,
-        createSnapshot, restoreSnapshot, isBlockedOnInput
+        createSnapshot, restoreSnapshot, isBlockedOnInput,
+        isMemDirty, clearMemDirty
     };
 })();

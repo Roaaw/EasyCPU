@@ -8,6 +8,7 @@ const UI = (() => {
     let assembled = null;
     let prevRegs = {};
     let currentHighlightLine = 0;
+    let lineNumbersRaf = null;
 
     const editor = () => $('#code-editor');
     const lineNums = () => $('#line-numbers');
@@ -18,6 +19,7 @@ const UI = (() => {
         initEditorResizer();
         initEditorZoom();
         initVt100Zoom();
+        initSpeedVisual();
         updateLineNumbers();
         updateRegisters();
         updateFlags();
@@ -105,8 +107,12 @@ const UI = (() => {
         if (btnRunBP) btnRunBP.addEventListener('click', doRunToBreakpoint);
 
         editor().addEventListener('input', () => {
-            updateLineNumbers();
-            if (typeof Debugger !== 'undefined') Debugger.refreshBreakpointDisplay();
+            if (lineNumbersRaf) cancelAnimationFrame(lineNumbersRaf);
+            lineNumbersRaf = requestAnimationFrame(() => {
+                updateLineNumbers();
+                if (typeof Debugger !== 'undefined') Debugger.refreshBreakpointDisplay();
+                lineNumbersRaf = null;
+            });
         });
         editor().addEventListener('scroll', syncScroll);
         editor().addEventListener('keydown', (e) => {
@@ -286,6 +292,7 @@ const UI = (() => {
             Peripherals.resetAll();
         }
 
+        forceNextMemUpdate();
         updateAll();
         highlightCurrentLine(getNextLine());
     }
@@ -355,38 +362,77 @@ const UI = (() => {
         const btnBP = $('#btn-run-bp');
         if (btnBP) btnBP.disabled = true;
 
-        let speedVal = parseInt($('#speed-slider').value);
-        let delay = Math.max(1, 110 - speedVal);
+        let tickCount = 0;
+        let lastUiUpdate = 0;
+        let startTime = performance.now();
+        let startSteps = CPU.getState().stepCount;
+
+        function getSpeedConfig() {
+            const v = parseFloat($('#speed-slider').value) || 5;
+            let delay = v >= 10 ? 0 : Math.max(1, 60 - Math.floor(v * 6));
+            let batch = 1;
+            if (v >= 10) batch = 100;
+            else if (v >= 8) batch = 20;
+            else if (v >= 5) batch = 8;
+            else if (v >= 3) batch = 4;
+            return { delay, batch, mhz: v };
+        }
 
         function tick() {
+            const { delay, batch } = getSpeedConfig();
             if (CPU.isHalted()) {
                 stopExecution();
+                updateAll();
+                highlightCurrentLine(getNextLine());
+                updateClockStats(startTime, startSteps);
                 return;
             }
             if (typeof CPU.isBlockedOnInput === 'function' && CPU.isBlockedOnInput()) {
                 runTimer = setTimeout(tick, Math.min(delay, 20));
                 return;
             }
-            if (typeof Debugger !== 'undefined') Debugger.pushSnapshot();
-            let result = CPU.step();
-            if (typeof Debugger !== 'undefined') {
-                Debugger.recordTrace(result);
-                Debugger.addCycles(result.mnemonic);
+            let lastResult = null;
+            for (let i = 0; i < batch; i++) {
+                if (CPU.isHalted()) break;
+                if (typeof Debugger !== 'undefined') Debugger.pushSnapshot();
+                lastResult = CPU.step();
+                tickCount++;
+                if (typeof Debugger !== 'undefined') {
+                    Debugger.addCycles(lastResult.mnemonic);
+                    Debugger.recordTrace(lastResult);
+                }
+                if (typeof Peripherals !== 'undefined' && Peripherals.tickTimer()) {
+                    Peripherals.fireTimerInterrupt();
+                }
+                if (lastResult.halted) break;
+                const bpLine = getNextLine();
+                if (typeof Debugger !== 'undefined' && Debugger.isBreakpoint(bpLine)) {
+                    lastResult.halted = true;
+                    lastResult._bpLine = bpLine;
+                    break;
+                }
+                if (typeof CPU.isBlockedOnInput === 'function' && CPU.isBlockedOnInput()) break;
             }
-            if (typeof Peripherals !== 'undefined' && Peripherals.tickTimer()) {
-                Peripherals.fireTimerInterrupt();
+            let result = lastResult;
+            if (!result) { runTimer = setTimeout(tick, delay); return; }
+            const now = performance.now();
+            if (now - lastUiUpdate > 32 || result.halted || result._bpLine) {
+                updateAll();
+                highlightCurrentLine(getNextLine());
+                updateClockStats(startTime, startSteps);
+                lastUiUpdate = now;
             }
-            updateAll();
-            if (!result.halted) {
-                let nextLine = getNextLine();
-                highlightCurrentLine(nextLine);
-                if (typeof Debugger !== 'undefined' && Debugger.isBreakpoint(nextLine)) {
+            if (!result.halted && !result._bpLine) {
+                runTimer = delay === 0 ? requestAnimationFrame(tick) : setTimeout(tick, delay);
+            } else {
+                if (result._bpLine) {
+                    updateAll();
+                    highlightCurrentLine(result._bpLine);
                     stopExecution();
-                    logConsole('Breakpoint hit at line ' + nextLine, 'warn');
+                    logConsole('Breakpoint hit at line ' + result._bpLine, 'warn');
                     return;
                 }
-                runTimer = setTimeout(tick, delay);
-            } else {
+                updateAll();
                 stopExecution();
             }
         }
@@ -436,6 +482,7 @@ const UI = (() => {
 
     function stopExecution() {
         if (runTimer) {
+            try { cancelAnimationFrame(runTimer); } catch (_) {}
             clearTimeout(runTimer);
             runTimer = null;
         }
@@ -477,17 +524,44 @@ const UI = (() => {
         cc.textContent = 'Steps: ' + state.stepCount + ' | Cycles: ~' + Debugger.getCycles();
     }
 
+    function updateClockStats(startTime, startSteps) {
+        const cc = $('#cycle-counter');
+        if (!cc || typeof Debugger === 'undefined') return;
+        const state = CPU.getState();
+        const elapsed = (performance.now() - startTime) / 1000;
+        const steps = state.stepCount - startSteps;
+        const cycles = Debugger.getCycles();
+        let txt = 'Steps: ' + state.stepCount + ' | Cycles: ~' + cycles;
+        if (elapsed > 0.2 && steps > 0) {
+            const ips = Math.round(steps / elapsed);
+            const cps = Math.round(cycles / elapsed);
+            const mhz = (cps/1e6).toFixed(3);
+            txt += ` | ${ips} ips | ~${mhz} MHz (8086 5MHz ref)`;
+        }
+        cc.textContent = txt;
+    }
+
+    let pendingMemUpdate = true;
     function updateAll() {
         updateRegisters();
         updateFlags();
-        updateMemory();
-        updateStack();
+        // only render memory/stack if dirty or forced
+        const memDirty = typeof CPU.isMemDirty === 'function' ? CPU.isMemDirty() : true;
+        if (memDirty || pendingMemUpdate) {
+            updateMemory();
+            if (typeof CPU.clearMemDirty === 'function') CPU.clearMemDirty();
+            pendingMemUpdate = false;
+        }
+        // stack changes when SP changes
+        const sp = CPU.getState().regs.sp;
+        if (sp !== prevRegs.sp || pendingMemUpdate) updateStack();
         let ports = CPU.getIOPorts();
         if (ports[2] !== undefined) updateLEDs(ports[2]);
         if (typeof Peripherals !== 'undefined' && Peripherals.refreshPixelDisplay) {
             Peripherals.refreshPixelDisplay();
         }
     }
+    function forceNextMemUpdate(){ pendingMemUpdate = true; }
 
     function refreshAll() {
         updateAll();
@@ -1322,6 +1396,36 @@ const UI = (() => {
                 applyZoom(current);
             }
         });
+    }
+
+    function initSpeedVisual() {
+        const slider = document.getElementById('speed-slider');
+        const valEl = document.getElementById('speed-value');
+        const modeEl = document.getElementById('speed-mode');
+        const fill = document.getElementById('speed-fill');
+        if (!slider) return;
+        function fmtMhz(v) {
+            return v.toFixed(1) + ' MHz';
+        }
+        function update() {
+            const v = parseFloat(slider.value);
+            if (valEl) valEl.textContent = fmtMhz(v);
+            if (fill) fill.style.width = ((v / 10) * 100) + '%';
+            let mode = 'Normal', cls = 'normal';
+            if (v <= 2) { mode = 'Slow'; cls = 'slow'; }
+            else if (v <= 5) { mode = 'Normal'; cls = 'normal'; }
+            else if (v < 8) { mode = 'Fast'; cls = 'fast'; }
+            else { mode = 'Turbo'; cls = 'turbo'; }
+            const batch = v >= 10 ? 100 : v >= 8 ? 20 : v >= 5 ? 8 : v >= 3 ? 4 : 1;
+            if (modeEl) {
+                modeEl.textContent = mode;
+                modeEl.className = 'speed-mode ' + cls;
+                modeEl.title = `${fmtMhz(v)} - ${mode}` + (v>=8 ? ` (batch x${batch})` : '');
+            }
+            slider.title = `Speed ${fmtMhz(v)} - ${mode}`;
+        }
+        slider.addEventListener('input', update);
+        update();
     }
 
     document.addEventListener('DOMContentLoaded', init);
