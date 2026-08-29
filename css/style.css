@@ -790,7 +790,7 @@ select:focus, button:focus, input:focus, textarea:focus {
 }
 
 .mem-addr {
-    color: var(--accent-cyan);
+    color: var(--accent-yellow);
 }
 
 .mem-val {
