@@ -244,13 +244,13 @@
                 <div class="panel-header" title="VT100 text terminal. Write bytes with OUT 8, AL or INT 21h AH=02h/09h. Click the screen and type; the program reads keys with IN AL, 8 or INT 21h AH=01h. Port 9 bit 0 = key waiting.">
                     <span>VT100 Terminal (Port 8)</span>
                     <span class="header-actions vt100-header-actions">
+                        <span id="vt100-status" class="vt100-status"></span>
                         <span class="editor-zoom-controls header-actions" style="gap:4px">
                             <button id="btn-zoom-out-vt100" class="small-btn" title="Decrease VT100 zoom">−</button>
                             <input type="range" id="zoom-slider-vt100" min="80" max="300" value="100" title="Zoom VT100">
                             <button id="btn-zoom-in-vt100" class="small-btn" title="Increase VT100 zoom">+</button>
                             <span id="zoom-label-vt100" class="zoom-label">100%</span>
                         </span>
-                        <span id="vt100-status" class="vt100-status"></span>
                         <button id="btn-clear-terminal" class="small-btn" type="button">Clear</button>
                     </span>
                 </div>
@@ -417,8 +417,9 @@
                 <span class="dock-toolbar-label">Arrange:</span>
                 <button id="btn-dock-stack" class="small-btn dock-layout-btn" title="Stacked (one below the other)" aria-pressed="false">≡ Stacked</button>
                 <button id="btn-dock-grid" class="small-btn dock-layout-btn active" title="Side by side when space allows" aria-pressed="true">⊞ Side by side</button>
+                <div id="minimized-tray" class="minimized-tray" aria-label="Minimized memory viewers"></div>
             </div>
-            <section id="memory-panel" class="panel dockable" draggable="true">
+            <section id="memory-panel" class="panel dockable memory-viewer" draggable="true" data-viewer="memory">
                 <div class="panel-header" title="View raw memory contents as hex bytes.">
                     <span class="panel-title-group">
                         <span class="drag-handle" title="Drag to reorder" aria-label="Drag Memory Viewer">⠿</span>
@@ -427,21 +428,22 @@
                     <div class="header-actions">
                         <div class="memory-controls">
                             <label for="mem-addr">Go to:</label>
-                            <input type="text" id="mem-addr" value="0000" maxlength="4" class="hex-input">
-                            <button id="btn-mem-go">Go</button>
+                            <input type="text" id="mem-addr" class="hex-input mem-addr" value="0000" maxlength="4">
+                            <button id="btn-mem-go" class="small-btn btn-mem-go">Go</button>
                             <label for="mem-segment">Segment:</label>
-                            <select id="mem-segment">
+                            <select id="mem-segment" class="mem-segment">
                                 <option value="ds">DS (Data)</option>
                                 <option value="ss">SS (Stack)</option>
                                 <option value="cs">CS (Code)</option>
                             </select>
                         </div>
+                        <button class="small-btn" id="btn-duplicate-memory" title="Duplicate viewer to monitor another segment">⧉</button>
                         <button id="btn-toggle-memory" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Memory Viewer" aria-expanded="true">−</button>
                     </div>
                 </div>
-                <div class="panel-body" id="memory-body">
-                    <pre id="memory-dump"></pre>
-                    <div id="data-symbols"></div>
+                <div class="panel-body memory-body" id="memory-body">
+                    <pre class="memory-dump" id="memory-dump"></pre>
+                    <div class="data-symbols" id="data-symbols"></div>
                 </div>
             </section>
 

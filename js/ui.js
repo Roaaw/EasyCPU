@@ -92,11 +92,35 @@ const UI = (() => {
             const btn = document.getElementById(btnId);
             if (btn) btn.addEventListener('click', () => togglePanel(panelId, btnId));
         });
-        $('#btn-mem-go').addEventListener('click', () => updateMemory());
-        $('#mem-addr').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') updateMemory();
+        // memory viewers - delegated to support duplicates
+        document.getElementById('bottom-dock')?.addEventListener('click', (e) => {
+            if (e.target.closest('.btn-mem-go')) {
+                const panel = e.target.closest('.memory-viewer');
+                if (panel) updateMemoryForPanel(panel);
+            }
+            if (e.target.closest('#btn-duplicate-memory')) {
+                duplicateMemoryViewer();
+            }
         });
-        $('#mem-segment').addEventListener('change', () => updateMemory());
+        document.getElementById('bottom-dock')?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.target.classList.contains('mem-addr')) {
+                const panel = e.target.closest('.memory-viewer');
+                if (panel) updateMemoryForPanel(panel);
+            }
+        });
+        document.getElementById('bottom-dock')?.addEventListener('change', (e) => {
+            if (e.target.classList.contains('mem-segment')) {
+                const panel = e.target.closest('.memory-viewer');
+                if (panel) updateMemoryForPanel(panel);
+            }
+        });
+        // keep original ids for backward compat
+        const origGo = document.getElementById('btn-mem-go');
+        if (origGo) origGo.addEventListener('click', () => updateMemory());
+        const origAddr = document.getElementById('mem-addr');
+        if (origAddr) origAddr.addEventListener('keydown', (e) => { if (e.key === 'Enter') updateMemory(); });
+        const origSeg = document.getElementById('mem-segment');
+        if (origSeg) origSeg.addEventListener('change', () => updateMemory());
 
         const btnStepBack = $('#btn-step-back');
         if (btnStepBack) btnStepBack.addEventListener('click', doStepBack);
@@ -576,10 +600,24 @@ const UI = (() => {
     }
 
     function updateMemory() {
-        let mem = CPU.getMemory();
-        if (!mem) return;
+        const viewers = document.querySelectorAll('.memory-viewer');
+        if (viewers.length === 0) {
+            const single = document.getElementById('memory-panel');
+            if (single) updateMemoryForPanel(single);
+            return;
+        }
+        viewers.forEach(panel => updateMemoryForPanel(panel));
+    }
 
-        let segment = $('#mem-segment').value;
+    function updateMemoryForPanel(panel) {
+        let mem = CPU.getMemory();
+        if (!mem || !panel) return;
+        const segSel = panel.querySelector('.mem-segment') || document.getElementById('mem-segment');
+        const addrInput = panel.querySelector('.mem-addr') || document.getElementById('mem-addr');
+        const dumpEl = panel.querySelector('.memory-dump') || panel.querySelector('#memory-dump') || document.getElementById('memory-dump');
+        const symbolsEl = panel.querySelector('.data-symbols') || panel.querySelector('#data-symbols') || document.getElementById('data-symbols');
+        if (!segSel || !addrInput || !dumpEl) return;
+        let segment = segSel.value;
         let state = CPU.getState();
         let segBase = 0;
         switch (segment) {
@@ -587,12 +625,10 @@ const UI = (() => {
             case 'ss': segBase = state.regs.ss; break;
             case 'cs': segBase = state.regs.cs; break;
         }
-
-        let startAddr = parseInt($('#mem-addr').value, 16) || 0;
+        let startAddr = parseInt(addrInput.value, 16) || 0;
         startAddr = startAddr & 0xFFF0;
         let rows = 12;
         let html = '';
-
         let labelAtOffset = {};
         if (assembled && assembled.dataSizes) {
             let entries = Object.keys(assembled.dataSizes).map(name => ({
@@ -641,9 +677,7 @@ const UI = (() => {
 
         for (let row = 0; row < rows; row++) {
             let addr = (segBase + startAddr + row * 16) & 0xFFFF;
-            let addrStr = '<span class="mem-addr">' +
-                addr.toString(16).toUpperCase().padStart(4, '0') + '</span>  ';
-
+            let addrStr = '<span class="mem-addr">' + addr.toString(16).toUpperCase().padStart(4, '0') + '</span>  ';
             let hexPart = '';
             let ascPart = '';
             for (let col = 0; col < 16; col++) {
@@ -672,12 +706,221 @@ const UI = (() => {
                 if (col === 7) hexPart += ' ';
                 ascPart += (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.';
             }
-
             html += addrStr + hexPart + ' <span class="mem-ascii">|' + ascPart + '|</span>\n';
         }
+        dumpEl.innerHTML = html;
+        // data symbols only for DS
+        const dsBase = segment === 'ds' ? segBase : null;
+        if (symbolsEl) {
+            if (dsBase === null) {
+                // keep original global symbols element also cleared
+                if (symbolsEl.id === 'data-symbols' || symbolsEl.classList.contains('data-symbols')) {
+                    // will be handled by updateDataSymbolsForPanel
+                }
+            }
+            updateDataSymbolsForPanel(symbolsEl, mem, dsBase);
+        } else {
+            updateDataSymbols(mem, segment === 'ds' ? segBase : null);
+        }
+    }
 
-        $('#memory-dump').innerHTML = html;
-        updateDataSymbols(mem, segment === 'ds' ? segBase : null);
+    function updateDataSymbolsForPanel(el, mem, dsBase) {
+        if (!el) return;
+        if (dsBase == null || !assembled || !assembled.dataSizes) { el.innerHTML = ''; return; }
+        let names = Object.keys(assembled.dataSizes);
+        if (names.length === 0) { el.innerHTML = ''; return; }
+        let entries = names.map(name => ({ name, offset: assembled.labels[name], size: assembled.dataSizes[name] })).sort((a, b) => a.offset - b.offset);
+        let dataLen = assembled.dataBytes ? assembled.dataBytes.length : 0;
+        let html = '';
+        for (let i = 0; i < entries.length; i++) {
+            let e = entries[i];
+            let nextOff = (i + 1 < entries.length) ? entries[i + 1].offset : dataLen;
+            let len = Math.max(nextOff - e.offset, e.size === 16 ? 2 : 1);
+            let value;
+            if (e.size === 16) {
+                let phys = (dsBase + e.offset) & 0xFFFF;
+                let val = (mem[phys] | (mem[(phys + 1) & 0xFFFF] << 8)) & 0xFFFF;
+                value = val.toString(16).toUpperCase().padStart(4, '0') + 'h';
+            } else {
+                let bytes = [];
+                let printable = len > 1;
+                for (let j = 0; j < len; j++) {
+                    let b = mem[(dsBase + e.offset + j) & 0xFFFF] || 0;
+                    bytes.push(b);
+                    if (b < 32 || b > 126) printable = false;
+                }
+                if (printable) value = '"' + bytes.map(b => String.fromCharCode(b)).join('') + '"';
+                else value = bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ') + 'h';
+            }
+            html += '<span class="data-sym"><span class="data-sym-name">' + e.name + '</span>=' + String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;') + '</span>';
+        }
+        el.innerHTML = html;
+    }
+
+    let memViewerCounter = 1;
+    function countMaximizedBottom() {
+        const dock = document.getElementById('bottom-dock');
+        if (!dock) return 0;
+        return [...dock.querySelectorAll('.dockable, .memory-viewer')].filter(p => !p.classList.contains('collapsed') && !p.classList.contains('tray-minimized') && p.style.display !== 'none').length;
+    }
+
+    function minimizeForLimit(excludeId) {
+        const dock = document.getElementById('bottom-dock');
+        if (!dock) return false;
+        const isRestoringTray = excludeId === 'console-panel' || excludeId === 'trace-panel';
+        // quando restaurar Output/Trace, prioriza substituir Memory 2/3
+        if (isRestoringTray) {
+            const viewers = [...dock.querySelectorAll('.memory-viewer')].filter(p => p.id !== excludeId && !p.classList.contains('collapsed') && !p.classList.contains('tray-minimized'));
+            viewers.sort((a,b) => {
+                const aIsClone = a.id !== 'memory-panel';
+                const bIsClone = b.id !== 'memory-panel';
+                if (aIsClone && !bIsClone) return -1;
+                if (!aIsClone && bIsClone) return 1;
+                return b.id.localeCompare(a.id);
+            });
+            if (viewers.length) {
+                const p = viewers[0];
+                const btn = p.querySelector('.collapse-btn');
+                if (btn && !p.classList.contains('collapsed')) {
+                    if (p.id === 'memory-panel') togglePanel(p.id, btn.id);
+                    else {
+                        const label = p.querySelector('.panel-title-group span:last-child')?.textContent.trim() || p.id;
+                        p.classList.add('collapsed');
+                        p.classList.add('tray-minimized');
+                        btn.textContent = '☐';
+                        btn.setAttribute('aria-expanded', 'false');
+                        minimizeMemoryToTray(p, label, btn.id);
+                    }
+                    return true;
+                }
+            }
+        }
+        // caso geral (clone Memory): prioriza Trace Log depois Output Console (1º clone → Trace, 2º → Output)
+        const priority = ['trace-panel', 'console-panel'];
+        for (const pid of priority) {
+            const p = document.getElementById(pid);
+            if (p && p.id !== excludeId && !p.classList.contains('collapsed') && !p.classList.contains('tray-minimized')) {
+                const btnId = pid === 'console-panel' ? 'btn-toggle-console' : 'btn-toggle-trace';
+                togglePanel(pid, btnId);
+                return true;
+            }
+        }
+        // senão minimiza memory viewer maximizado, priorizando clones 2/3
+        const viewers = [...dock.querySelectorAll('.memory-viewer')].filter(p => p.id !== excludeId && !p.classList.contains('collapsed') && !p.classList.contains('tray-minimized'));
+        viewers.sort((a,b) => {
+            const aIsClone = a.id !== 'memory-panel';
+            const bIsClone = b.id !== 'memory-panel';
+            if (aIsClone && !bIsClone) return -1;
+            if (!aIsClone && bIsClone) return 1;
+            return b.id.localeCompare(a.id);
+        });
+        if (viewers.length) {
+            const p = viewers[0];
+            const btn = p.querySelector('.collapse-btn');
+            if (btn) {
+                const isCollapsed = p.classList.contains('collapsed');
+                if (!isCollapsed) {
+                    // usa togglePanel se for o original, senão toggle direto
+                    if (p.id === 'memory-panel') togglePanel(p.id, btn.id);
+                    else {
+                        const label = p.querySelector('.panel-title-group span:last-child')?.textContent.trim() || p.id;
+                        p.classList.add('collapsed');
+                        p.classList.add('tray-minimized');
+                        btn.textContent = '☐';
+                        btn.setAttribute('aria-expanded', 'false');
+                        minimizeMemoryToTray(p, label, btn.id);
+                    }
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    function duplicateMemoryViewer() {
+        const dock = document.getElementById('bottom-dock');
+        const template = document.getElementById('memory-panel');
+        if (!dock || !template) return;
+        const existing = dock.querySelectorAll('.memory-viewer').length;
+        if (existing >= 3) { logConsole('Maximum 3 memory viewers (DS/SS/CS).', 'warn'); return; }
+        // limite de 3 maximizadas na área inferior
+        if (countMaximizedBottom() >= 3) {
+            if (!minimizeForLimit()) { logConsole('Minimize a window to open a new Memory Viewer (max 3 maximized).', 'warn'); return; }
+        }
+        const clone = template.cloneNode(true);
+        memViewerCounter++;
+        const newId = 'memory-panel-' + memViewerCounter;
+        clone.id = newId;
+        // update title with segment hint
+        const titleSpan = clone.querySelector('.panel-title-group span:last-child');
+        if (titleSpan) titleSpan.textContent = 'Memory Viewer ' + memViewerCounter;
+        // clear duplicate button, add close button
+        const dupBtn = clone.querySelector('#btn-duplicate-memory');
+        if (dupBtn) dupBtn.remove();
+        // add close button before toggle
+        const headerActions = clone.querySelector('.header-actions');
+        const toggleBtn = clone.querySelector('.collapse-btn');
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'small-btn';
+        closeBtn.textContent = '×';
+        closeBtn.title = 'Close viewer';
+        closeBtn.addEventListener('click', () => {
+            const tray = document.getElementById('minimized-tray');
+            const chip = tray?.querySelector(`[data-panel-id="${newId}"]`);
+            if (chip) chip.remove();
+            clone.remove();
+        });
+        if (headerActions && toggleBtn) headerActions.insertBefore(closeBtn, toggleBtn);
+        // reset inputs: cycle segment DS->SS->CS
+        const segSel = clone.querySelector('.mem-segment');
+        if (segSel) {
+            const segs = ['ds','ss','cs'];
+            segSel.value = segs[existing % 3];
+            segSel.id = '';
+            segSel.addEventListener('change', () => updateMemoryForPanel(clone));
+        }
+        const addrInput = clone.querySelector('.mem-addr');
+        if (addrInput) { addrInput.id = ''; addrInput.value = '0000'; addrInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') updateMemoryForPanel(clone); }); }
+        const goBtn = clone.querySelector('.btn-mem-go');
+        if (goBtn) { goBtn.id=''; goBtn.addEventListener('click', ()=>updateMemoryForPanel(clone)); }
+        const toggle = clone.querySelector('.collapse-btn');
+        if (toggle) {
+            toggle.id = 'btn-toggle-' + newId;
+            const labelForChip = () => clone.querySelector('.panel-title-group span:last-child')?.textContent.trim() || newId;
+            toggle.addEventListener('click', () => {
+                const collapsed = clone.classList.toggle('collapsed');
+                const isExpanded = !collapsed;
+                toggle.setAttribute('aria-expanded', String(isExpanded));
+                if (collapsed) {
+                    toggle.textContent = '☐';
+                    toggle.title = 'Maximize';
+                    toggle.setAttribute('aria-label', 'Maximize ' + labelForChip());
+                    minimizeMemoryToTray(clone, labelForChip(), toggle.id);
+                } else {
+                    toggle.textContent = '−';
+                    toggle.title = 'Minimize';
+                    toggle.setAttribute('aria-label', 'Minimize ' + labelForChip());
+                    restoreMemoryFromTray(newId);
+                    clone.classList.remove('tray-minimized');
+                    if (countMaximizedBottom() > 3) minimizeForLimit(newId);
+                }
+            });
+        }
+        // make draggable
+        clone.setAttribute('draggable','true');
+        const handle = clone.querySelector('.drag-handle');
+        const header = clone.querySelector('.panel-header');
+        [handle, header, clone].forEach(el=>{ if(!el) return; el.setAttribute('draggable','true'); el.addEventListener('dragstart', onDockDragStart); el.addEventListener('dragend', onDockDragEnd); });
+        // ensure body ids are not duplicated
+        const body = clone.querySelector('.memory-body');
+        if (body) body.id = '';
+        const dump = clone.querySelector('.memory-dump');
+        if (dump) dump.id = '';
+        const symbols = clone.querySelector('.data-symbols');
+        if (symbols) symbols.id = '';
+        dock.appendChild(clone);
+        updateMemoryForPanel(clone);
+        logConsole('Duplicated Memory Viewer (' + segSel.value.toUpperCase() + ')', 'info');
     }
 
     function updateDataSymbols(mem, dsBase) {
@@ -752,6 +995,8 @@ const UI = (() => {
         const panel = document.getElementById(panelId);
         const btn = document.getElementById(btnId);
         if (!panel || !btn) return;
+        const isMemoryViewer = panel.classList.contains('memory-viewer');
+        const toTray = isMemoryViewer || panelId === 'trace-panel' || panelId === 'console-panel';
         const collapsed = panel.classList.toggle('collapsed');
         const isExpanded = !collapsed;
         btn.setAttribute('aria-expanded', String(isExpanded));
@@ -768,16 +1013,67 @@ const UI = (() => {
             'stack-panel': 'Stack',
             'challenge-panel': 'Challenges'
         };
-        const label = labelMap[panelId] || panelId;
+        const baseLabel = labelMap[panelId] || panelId;
+        // for duplicated memory viewers, use panel title
+        let label = baseLabel;
+        if (isMemoryViewer && panelId !== 'memory-panel') {
+            const t = panel.querySelector('.panel-title-group span:last-child');
+            if (t) label = t.textContent.trim();
+        }
         if (collapsed) {
             btn.textContent = '☐';
             btn.title = 'Maximize';
             btn.setAttribute('aria-label', 'Maximize ' + label);
+            if (toTray) minimizeMemoryToTray(panel, label, btnId);
         } else {
             btn.textContent = '−';
             btn.title = 'Minimize';
             btn.setAttribute('aria-label', 'Minimize ' + label);
+            if (toTray) {
+                restoreMemoryFromTray(panelId);
+                if (countMaximizedBottom() > 3) minimizeForLimit(panelId);
+            }
         }
+    }
+
+    function minimizeMemoryToTray(panel, label, btnId) {
+        const tray = document.getElementById('minimized-tray');
+        if (!tray || !panel) return;
+        panel.classList.add('tray-minimized');
+        // avoid duplicate chip
+        if (tray.querySelector(`[data-panel-id="${panel.id}"]`)) return;
+        const seg = panel.querySelector('.mem-segment')?.value?.toUpperCase() || '';
+        const chip = document.createElement('button');
+        chip.className = 'minimized-chip';
+        chip.dataset.panelId = panel.id;
+        chip.dataset.btnId = btnId;
+        chip.title = `Restore ${label} (${seg})`;
+        chip.innerHTML = `${label}${seg ? ' ('+seg+')' : ''} <span class="chip-restore">☐</span>`;
+        chip.addEventListener('click', () => {
+            const p = document.getElementById(panel.id);
+            const b = document.getElementById(btnId);
+            if (p) {
+                p.classList.remove('tray-minimized');
+                p.classList.remove('collapsed');
+                if (b) {
+                    b.textContent = '−';
+                    b.title = 'Minimize';
+                    b.setAttribute('aria-label', 'Minimize ' + label);
+                    b.setAttribute('aria-expanded', 'true');
+                }
+                if (countMaximizedBottom() > 3) minimizeForLimit(p.id);
+            }
+            chip.remove();
+        });
+        tray.appendChild(chip);
+    }
+
+    function restoreMemoryFromTray(panelId) {
+        const tray = document.getElementById('minimized-tray');
+        const chip = tray?.querySelector(`[data-panel-id="${panelId}"]`);
+        if (chip) chip.remove();
+        const panel = document.getElementById(panelId);
+        if (panel) panel.classList.remove('tray-minimized');
     }
 
     function toggleConsole() {
@@ -1202,9 +1498,10 @@ const UI = (() => {
             const totalAvail = startEditorH + startTermH;
             let newEditorH = startEditorH + dy;
             let newTermH = totalAvail - newEditorH;
-            const minH = 80;
-            if (newEditorH < minH) { newEditorH = minH; newTermH = totalAvail - minH; }
-            if (newTermH < minH) { newTermH = minH; newEditorH = totalAvail - minH; }
+            const minEditor = 80;
+            const minTerm = 110; // header 28 + hint 22 + screen 60 → hint nunca some, serve como limitador
+            if (newEditorH < minEditor) { newEditorH = minEditor; newTermH = totalAvail - minEditor; }
+            if (newTermH < minTerm) { newTermH = minTerm; newEditorH = totalAvail - minTerm; }
             editorContainer.style.flex = `0 0 ${newEditorH}px`;
             editorContainer.style.height = '';
             terminalPanel.style.flex = `1 1 ${newTermH}px`;
