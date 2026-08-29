@@ -417,8 +417,9 @@
                 <span class="dock-toolbar-label">Arrange:</span>
                 <button id="btn-dock-stack" class="small-btn dock-layout-btn" title="Stacked (one below the other)" aria-pressed="false">≡ Stacked</button>
                 <button id="btn-dock-grid" class="small-btn dock-layout-btn active" title="Side by side when space allows" aria-pressed="true">⊞ Side by side</button>
+                <div id="minimized-tray" class="minimized-tray" aria-label="Minimized memory viewers"></div>
             </div>
-            <section id="memory-panel" class="panel dockable" draggable="true">
+            <section id="memory-panel" class="panel dockable memory-viewer" draggable="true" data-viewer="memory">
                 <div class="panel-header" title="View raw memory contents as hex bytes.">
                     <span class="panel-title-group">
                         <span class="drag-handle" title="Drag to reorder" aria-label="Drag Memory Viewer">⠿</span>
@@ -427,21 +428,22 @@
                     <div class="header-actions">
                         <div class="memory-controls">
                             <label for="mem-addr">Go to:</label>
-                            <input type="text" id="mem-addr" value="0000" maxlength="4" class="hex-input">
-                            <button id="btn-mem-go">Go</button>
+                            <input type="text" id="mem-addr" class="hex-input mem-addr" value="0000" maxlength="4">
+                            <button id="btn-mem-go" class="small-btn btn-mem-go">Go</button>
                             <label for="mem-segment">Segment:</label>
-                            <select id="mem-segment">
+                            <select id="mem-segment" class="mem-segment">
                                 <option value="ds">DS (Data)</option>
                                 <option value="ss">SS (Stack)</option>
                                 <option value="cs">CS (Code)</option>
                             </select>
                         </div>
+                        <button class="small-btn" id="btn-duplicate-memory" title="Duplicate viewer to monitor another segment">⧉</button>
                         <button id="btn-toggle-memory" class="small-btn collapse-btn" title="Minimize" aria-label="Minimize Memory Viewer" aria-expanded="true">−</button>
                     </div>
                 </div>
-                <div class="panel-body" id="memory-body">
-                    <pre id="memory-dump"></pre>
-                    <div id="data-symbols"></div>
+                <div class="panel-body memory-body" id="memory-body">
+                    <pre class="memory-dump" id="memory-dump"></pre>
+                    <div class="data-symbols" id="data-symbols"></div>
                 </div>
             </section>
 

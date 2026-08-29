@@ -197,6 +197,7 @@ select:focus, button:focus, input:focus, textarea:focus {
     flex-direction: column;
     background: var(--bg-primary);
     min-height: 0;
+    overflow: hidden;
 }
 
 #right-panels {
@@ -232,6 +233,40 @@ select:focus, button:focus, input:focus, textarea:focus {
     border-bottom: 1px solid var(--border-color);
     font-size: 11px;
     width: 100%;
+}
+
+.minimized-tray {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.minimized-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.minimized-chip:hover {
+    background: var(--accent-blue);
+    color: #1a1b26;
+    border-color: var(--accent-blue);
+}
+
+.minimized-chip .chip-restore {
+    font-size: 10px;
+    line-height: 1;
+    padding: 0 2px;
 }
 
 #bottom-dock.layout-grid .dock-toolbar {
@@ -299,6 +334,7 @@ select:focus, button:focus, input:focus, textarea:focus {
 }
 
 #memory-panel,
+.memory-viewer,
 #console-panel,
 #trace-panel {
     background: var(--bg-primary);
@@ -733,7 +769,8 @@ select:focus, button:focus, input:focus, textarea:focus {
     padding: 2px 6px;
 }
 
-#memory-body {
+#memory-body,
+.memory-body {
     padding: 6px 10px;
     overflow: auto;
     height: 170px;
@@ -742,7 +779,8 @@ select:focus, button:focus, input:focus, textarea:focus {
     flex: none;
 }
 
-#memory-dump {
+#memory-dump,
+.memory-dump {
     font-family: 'Cascadia Code', 'Consolas', monospace;
     font-size: 12px;
     line-height: 1.5;
@@ -867,6 +905,7 @@ select:focus, button:focus, input:focus, textarea:focus {
 
 #console-panel.collapsed #console-body,
 #memory-panel.collapsed #memory-body,
+.memory-viewer.collapsed .memory-body,
 #trace-panel.collapsed #trace-body,
 #led-panel.collapsed #led-body,
 #seven-seg-panel.collapsed #sevenseg-body,
@@ -880,8 +919,13 @@ select:focus, button:focus, input:focus, textarea:focus {
     display: none !important;
 }
 
+.memory-viewer.tray-minimized {
+    display: none !important;
+}
+
 #console-panel.collapsed,
 #memory-panel.collapsed,
+.memory-viewer.collapsed,
 #trace-panel.collapsed,
 #led-panel.collapsed,
 #seven-seg-panel.collapsed,
@@ -902,6 +946,12 @@ select:focus, button:focus, input:focus, textarea:focus {
 
 #right-panels .dockable-right.collapsed {
     flex: 0 0 auto !important;
+}
+
+#bottom-dock .memory-viewer.tray-minimized,
+#bottom-dock #trace-panel.tray-minimized,
+#bottom-dock #console-panel.tray-minimized {
+    display: none !important;
 }
 
 #converter-panel.collapsed .panel-body {
@@ -1802,9 +1852,12 @@ body:not(.advanced-mode) .adv { display: none !important; }
 }
 
 .vt100-hint {
-    padding: 4px 10px 0;
+    padding: 4px 10px 6px;
     font-size: 10px;
     color: var(--text-muted);
+    flex-shrink: 0;
+    background: var(--bg-primary);
+    border-top: 1px solid var(--border-color);
 }
 
 /* ---- CONVERTER ---- */
